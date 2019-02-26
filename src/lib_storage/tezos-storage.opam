@@ -10,7 +10,7 @@ depends: [
   "dune" { build & >= "1.0.1" }
   "tezos-base"
   "lmdb"
-  "irmin-lmdb"
+  "irmin-pack"
   "tezos-stdlib-unix" { with-test }
   "alcotest-lwt" { with-test }
 ]

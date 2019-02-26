@@ -333,10 +333,10 @@ opam:18:tezos-base:
   variables:
     package: tezos-base
 
-opam:19:irmin-lmdb:
+opam:19:irmin-pack:
   <<: *opam_definition
   variables:
-    package: irmin-lmdb
+    package: irmin-pack
 
 opam:20:bip39:
   <<: *opam_definition

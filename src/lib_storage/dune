@@ -1,9 +1,9 @@
 (library
  (name tezos_storage)
  (public_name tezos-storage)
- (libraries tezos-base
+ (libraries tezos-base digestif.c
+            irmin-pack
             lmdb
-            irmin-lmdb
 	    tezos-stdlib-unix)
  (flags (:standard -w -9+27-30-32-40@8
                    -safe-string

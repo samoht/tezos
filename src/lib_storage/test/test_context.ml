@@ -25,6 +25,31 @@
 
 open Context
 
+let reporter ?(prefix="") () =
+  let pad n x =
+    if String.length x > n then x
+    else x ^ String.make (n - String.length x) ' '
+  in
+  let report src level ~over k msgf =
+    let k _ = over (); k () in
+    let ppf = match level with Logs.App -> Fmt.stdout | _ -> Fmt.stderr in
+    let with_stamp h _tags k fmt =
+      let dt = Mtime.Span.to_us (Mtime_clock.elapsed ()) in
+      Fmt.kpf k ppf ("%s%+04.0fus %a %a @[" ^^ fmt ^^ "@]@.")
+        prefix
+        dt
+        Fmt.(styled `Magenta string) (pad 10 @@ Logs.Src.name src)
+        Logs_fmt.pp_header (level, h)
+    in
+    msgf @@ fun ?header ?tags fmt ->
+    with_stamp header tags k fmt
+  in
+  { Logs.report = report }
+
+let () =
+  Logs.set_level (Some Logs.Debug);
+  Logs.set_reporter (reporter ())
+
 let (>>=) = Lwt.bind
 let (>|=) = Lwt.(>|=)
 let (//) = Filename.concat
@@ -60,7 +85,12 @@ let create_block2 idx genesis_commit =
       set ctxt ["a"; "b"] (MBytes.of_string "Novembre") >>= fun ctxt ->
       set ctxt ["a"; "c"] (MBytes.of_string "Juin") >>= fun ctxt ->
       set ctxt ["version";] (MBytes.of_string "0.0") >>= fun ctxt ->
-      commit ctxt
+      commit ctxt >>= fun hash ->
+      Assert.equal_context_hash_list
+        [hash]
+        [Context_hash.of_b58check_exn
+           "CoWEn3ZHUUpw9rUH7TLmLYKShoqmkdxkaoSM4kvk1dwGieDrJUAX"];
+      Lwt.return hash
 
 let block3a =
   Block_hash.of_hex_exn

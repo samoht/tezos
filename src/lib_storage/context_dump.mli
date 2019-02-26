@@ -26,97 +26,152 @@
 
 module type Dump_interface = sig
   type index
+
   type context
+
   type tree
+
+  val pp_tree : tree Fmt.t
+
   type hash
+
   type step = string
+
   type key = step list
+
   type commit_info
+
+  type batch
+
+  val batch : index -> (batch -> 'a Lwt.t) -> 'a Lwt.t
 
   module Block_header : sig
     type t
+
     val to_bytes : t -> MBytes.t
+
     val of_bytes : MBytes.t -> t option
+
     val equal : t -> t -> bool
   end
 
   module Pruned_block : sig
     type t
+
     val to_bytes : t -> MBytes.t
+
     val of_bytes : MBytes.t -> t option
   end
 
   module Block_data : sig
     type t
+
     val to_bytes : t -> MBytes.t
+
     val of_bytes : MBytes.t -> t option
   end
 
   module Protocol_data : sig
     type t
+
     val to_bytes : t -> MBytes.t
+
     val of_bytes : MBytes.t -> t option
   end
 
   module Commit_hash : sig
     type t
+
     val to_bytes : t -> MBytes.t
+
     val of_bytes : MBytes.t -> t tzresult
   end
 
   (* hash manipulation *)
-  val hash_export : hash -> [ `Node | `Blob ] * MBytes.t
-  val hash_import : [ `Node | `Blob ]  -> MBytes.t -> hash tzresult
+  val hash_export : hash -> MBytes.t
+
+  val hash_import : MBytes.t -> hash tzresult
+
   val hash_equal : hash -> hash -> bool
 
   (* commit manipulation (for parents) *)
-  val context_parents : context -> Commit_hash.t list Lwt.t
+  val context_parents : context -> Commit_hash.t list
 
   (* Commit info *)
   val context_info : context -> commit_info
-  val context_info_export : commit_info -> ( Int64.t * string * string )
-  val context_info_import : ( Int64.t * string * string ) -> commit_info
+
+  val context_info_export : commit_info -> Int64.t * string * string
+
+  val context_info_import : Int64.t * string * string -> commit_info
 
   (* block header manipulation *)
   val get_context : index -> Block_header.t -> context option Lwt.t
+
   val set_context :
-    info:commit_info -> parents:Commit_hash.t list -> context ->
-    Block_header.t ->
-    Block_header.t option Lwt.t
+       info:commit_info
+    -> parents:Commit_hash.t list
+    -> context
+    -> Block_header.t
+    -> Block_header.t option Lwt.t
 
   (* for dumping *)
   val context_tree : context -> tree
-  val tree_hash : context -> tree -> hash Lwt.t
+
+  val tree_hash : tree -> hash
+
   val sub_tree : tree -> key -> tree option Lwt.t
-  val tree_list : tree -> ( step * [`Contents|`Node] ) list Lwt.t
+
+  val tree_list : tree -> (step * [`Contents | `Node]) list Lwt.t
+
   val tree_content : tree -> MBytes.t option Lwt.t
 
   (* for restoring *)
   val make_context : index -> context
-  val update_context : context -> tree -> context
-  val add_hash : index -> tree -> key -> hash -> tree option Lwt.t
-  val add_mbytes : index -> tree -> key -> MBytes.t -> tree Lwt.t
-  val add_dir : index -> tree -> key -> ( step * hash ) list -> tree option Lwt.t
 
+  val update_context : context -> tree -> context
+
+  val add_mbytes : batch -> tree -> key -> MBytes.t -> (hash * tree) Lwt.t
+
+  val add_dir :
+       index
+    -> batch
+    -> tree
+    -> key
+    -> (step * [`Blob | `Node] * hash) list
+    -> (hash * tree) option Lwt.t
 end
 
 module type S = sig
   type index
+
   type context
+
   type block_header
+
   type block_data
+
   type pruned_block
+
   type protocol_data
 
   val dump_contexts_fd :
-    index ->
-    (block_header * block_data * pruned_block list * protocol_data list) list ->
-    fd:Lwt_unix.file_descr -> unit tzresult Lwt.t
-  val restore_contexts_fd : index -> fd:Lwt_unix.file_descr ->
-    (block_header * block_data * pruned_block list * protocol_data list) list tzresult Lwt.t
+       index
+    -> (block_header * block_data * pruned_block list * protocol_data list)
+       list
+    -> fd:Lwt_unix.file_descr
+    -> unit tzresult Lwt.t
+
+  val restore_contexts_fd :
+       index
+    -> fd:Lwt_unix.file_descr
+    -> (block_header * block_data * pruned_block list * protocol_data list)
+      list
+      tzresult
+      Lwt.t
 end
 
-module Make (I:Dump_interface) : S
+module Make (I : Dump_interface) :
+  S
   with type index := I.index
    and type context := I.context
    and type block_header := I.Block_header.t

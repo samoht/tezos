@@ -3,6 +3,7 @@
  (libraries tezos-base
             tezos-storage
             tezos-stdlib-unix
+            logs.fmt
             alcotest-lwt)
  (flags (:standard -w -9-32
                    -safe-string
