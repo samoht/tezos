@@ -23,7 +23,7 @@
 (*                                                                           *)
 (*****************************************************************************)
 
-let commands () =
+let commands () : #Client_context.full Clic.command list =
   let open Clic in
   let group = { name = "admin" ;
                 title = "Commands to perform privileged operations on the node" } in
@@ -57,4 +57,22 @@ let commands () =
                Block_hash.pp_short hash >>= fun () ->
              return_unit)
            invalid_blocks) ;
+    command ~group
+      ~desc: "Retrieve the current checkpoint and display it in a \
+              format compatible with node argument `--checkpoint`."
+      no_options
+      (fixed [ "show" ; "current" ; "checkpoint" ])
+      (fun () (cctxt : #Client_context.full) ->
+         Shell_services.Chain.checkpoint cctxt ()
+         >>=? fun (block_header, save_point, caboose, history_mode) ->
+         cctxt#message
+           "@[<v 0>Full checkpoint: %s@,\
+            History mode: %a@,\
+            Checkpoint level: %ld@,\
+            Save point level: %ld@,\
+            Caboose level: %ld@]"
+           (Block_header.to_b58check block_header)
+           History_mode.pp history_mode
+           save_point caboose block_header.shell.level >>= fun () ->
+         return ())
   ]
