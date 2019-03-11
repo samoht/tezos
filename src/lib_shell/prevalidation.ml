@@ -124,9 +124,10 @@ module Make(Proto : Registered_protocol.T) : T with module Proto = Proto = struc
       State.Block.header predecessor in
     State.Block.context predecessor >>= fun predecessor_context ->
     let predecessor_hash = State.Block.hash predecessor in
+    State.Block.max_operations_ttl predecessor >>=? fun max_op_ttl ->
     Chain_traversal.live_blocks
       predecessor
-      (State.Block.max_operations_ttl predecessor)
+      max_op_ttl
     >>=? fun (live_blocks, live_operations) ->
     Context.reset_test_chain
       predecessor_context predecessor_hash

@@ -161,9 +161,9 @@ let with_activated_peer_validator w peer_id f =
 
 let may_update_checkpoint chain_state new_head =
   State.Chain.checkpoint chain_state >>= fun checkpoint ->
-  let new_level = State.Block.last_allowed_fork_level new_head in
+  State.Block.last_allowed_fork_level new_head >>=? fun new_level ->
   if new_level <= checkpoint.shell.level then
-    Lwt.return_unit
+    return_unit
   else
     let state = State.Chain.global_state chain_state in
     State.history_mode state >>= fun history_mode ->
@@ -186,7 +186,7 @@ let may_update_checkpoint chain_state new_head =
                   State.Chain.set_checkpoint_then_purge_full chain_state new_checkpoint
               | Rolling ->
                   State.Chain.set_checkpoint_then_purge_rolling chain_state new_checkpoint
-            end
+            end >>= fun () -> return_unit
 
 let may_switch_test_chain w spawn_child block =
   let nv = Worker.state w in
@@ -324,7 +324,7 @@ let on_request (type a) w spawn_child (req : a Request.t) : a tzresult Lwt.t =
     return Event.Ignored_head
   else begin
     Chain.set_head nv.parameters.chain_state block >>=? fun previous ->
-    may_update_checkpoint nv.parameters.chain_state block >>= fun () ->
+    may_update_checkpoint nv.parameters.chain_state block >>=? fun () ->
     broadcast_head w ~previous block >>= fun () ->
     begin match nv.prevalidator with
       | Some old_prevalidator ->
