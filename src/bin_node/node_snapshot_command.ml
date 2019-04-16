@@ -492,7 +492,7 @@ let clean_directory data_dir =
   Lwt_utils_unix.remove_dir @@ store_dir data_dir >>= fun () ->
   Lwt_utils_unix.remove_dir @@ context_dir data_dir
 
-let reconstruct_contexts
+let reconstruct_contexts ~context_root
     store context_index chain_id block_store
     (history: (Block_hash.t * Context.Pruned_block.t) array) =
   lwt_log_notice "Reconstructing all the contexts from the genesis." >>= fun () ->
@@ -500,11 +500,30 @@ let reconstruct_contexts
 
   let rec reconstruct_chunks level =
     Store.with_atomic_rw store begin fun () ->
+      let t0 = Unix.gettimeofday () in
+      Fmt.epr "# time, level, dict, index, pack, mem\n%!";
       let rec reconstruct_chunks level =
-        Tezos_stdlib.Utils.display_progress
-          "Reconstructing contexts: %i/%i"
-          level
-          limit ;
+        if level mod 10 = 0 then (
+          let gc = (* in MiB *)
+            let s = Gc.quick_stat () in
+            let w = s.minor_words +. s.major_words -. s.promoted_words in
+            int_of_float (8. *. w /. 1024. /. 1024.)
+          in
+          let file f = (* in MiB *)
+            try (Unix.stat f).st_size / 1024 / 1024 with
+            | Unix.Unix_error (Unix.ENOENT, _, _) -> 0
+          in
+          let dict = file (Filename.concat context_root "store.dict") in
+          let index = file (Filename.concat context_root "store.index") in
+          let pack = file (Filename.concat context_root "store.pack") in
+          let time = (* in seconds *)
+            int_of_float (Unix.gettimeofday () -. t0) in
+          Fmt.epr "%d, %d, %d, %d, %d, %d\n%!"
+            time
+            level
+            dict index pack
+            gc;
+        );
         if level = limit then
           return level
         else
@@ -705,7 +724,8 @@ let import ?(reconstruct = false) data_dir filename block =
                match reconstruct with
                | true ->
                    if is_full_snapshot history then
-                     reconstruct_contexts store context_index chain_id block_store history
+                     reconstruct_contexts ~context_root store context_index
+                       chain_id block_store history
                    else
                      fail Wrong_reconstrcut_mode
                | false ->
