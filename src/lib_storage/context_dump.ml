@@ -88,9 +88,9 @@ module type Dump_interface = sig
   end
 
   (* hash manipulation *)
-  val hash_export : hash -> MBytes.t
+  val hash_export : hash -> string
 
-  val hash_import : MBytes.t -> hash tzresult
+  val hash_import : string -> hash tzresult
 
   val hash_equal : hash -> hash -> bool
 
@@ -174,7 +174,7 @@ type error += Writing_error of string
 
 type error += Bad_read of string
 
-type error += Bad_hash of string * MBytes.t * MBytes.t
+type error += Bad_hash of string * string * string
 
 type error += Context_not_found of MBytes.t
 
@@ -213,10 +213,10 @@ let () =
     ~title:"Wrong hash given" ~description:""
     ~pp:(fun ppf (ty, his, hshould) ->
       Format.fprintf ppf "@[Wrong hash [%s] given: %s, should be %s@]" ty
-        (MBytes.to_string his) (MBytes.to_string hshould) )
+        his hshould )
     Data_encoding.(
-      obj3 (req "hash_ty" string) (req "hash_is" bytes)
-        (req "hash_should" bytes))
+      obj3 (req "hash_ty" string) (req "hash_is" string)
+        (req "hash_should" string))
     (function
       | Bad_hash (ty, his, hshould) -> Some (ty, his, hshould) | _ -> None)
     (fun (ty, his, hshould) -> Bad_hash (ty, his, hshould))
@@ -373,6 +373,12 @@ module Make (I : Dump_interface) = struct
     MBytes.blit_of_string string 0 b 0 (MBytes.length b) ;
     Lwt.return ()
 
+  let read_bytes rbuf b =
+    read_string rbuf ~len:(Bytes.length b)
+    >>= fun string ->
+    Bytes.blit_string string 0 b 0 (Bytes.length b) ;
+    Lwt.return ()
+
   let set_command buf c =
     Buffer.add_string buf
       ( match c with
@@ -431,26 +437,36 @@ module Make (I : Dump_interface) = struct
     set_int buf (MBytes.length b) ;
     Buffer.add_bytes buf (MBytes.to_bytes b)
 
+  let set_string buf b =
+    set_int buf (String.length b) ;
+    Buffer.add_string buf b
+
   let get_mbytes rbuf =
     get_int rbuf
     >>= fun l ->
     let b = MBytes.create l in
     read_mbytes rbuf b >>= fun () -> Lwt.return b
 
+  let get_string rbuf =
+    get_int rbuf
+    >>= fun l ->
+    let b = Bytes.create l in
+    read_bytes rbuf b >>= fun () -> Lwt.return (Bytes.unsafe_to_string b)
+
   let set_tree_hash buf h =
     let mb = I.hash_export h in
     set_hash_type buf `Node ;
-    set_mbytes buf mb
+    set_string buf mb
 
   let set_blob_hash buf h =
     let mb = I.hash_export h in
     set_hash_type buf `Blob ;
-    set_mbytes buf mb
+    set_string buf mb
 
   let get_hash rbuf =
     get_hash_type rbuf
     >>=? fun ty ->
-    get_mbytes rbuf >|= fun mb -> I.hash_import mb >|? fun h -> (ty, h)
+    get_string rbuf >|= fun mb -> I.hash_import mb >|? fun h -> (ty, h)
 
   let set_string buf s =
     set_int buf (String.length s) ;
@@ -494,10 +510,10 @@ module Make (I : Dump_interface) = struct
   let set_blob buf hash path_rev blob =
     set_command buf Blob ;
     let mbhash = I.hash_export hash in
-    set_mbytes buf mbhash ; set_rev_path buf path_rev ; set_mbytes buf blob
+    set_string buf mbhash ; set_rev_path buf path_rev ; set_mbytes buf blob
 
   let get_blob rbuf =
-    get_mbytes rbuf
+    get_string rbuf
     >>= fun mbhash ->
     Lwt.return @@ I.hash_import mbhash
     >>=? fun hash ->
@@ -507,10 +523,10 @@ module Make (I : Dump_interface) = struct
   let set_dir buf hash path_rev keys =
     set_command buf Directory ;
     let mbhash = I.hash_export hash in
-    set_mbytes buf mbhash ; set_rev_path buf path_rev ; set_keys_hashs buf keys
+    set_string buf mbhash ; set_rev_path buf path_rev ; set_keys_hashs buf keys
 
   let get_dir rbuf =
-    get_mbytes rbuf
+    get_string rbuf
     >>= fun mbhash ->
     Lwt.return @@ I.hash_import mbhash
     >>=? fun hash ->

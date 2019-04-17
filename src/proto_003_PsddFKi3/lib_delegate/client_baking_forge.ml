@@ -562,7 +562,7 @@ let finalize_block_header
               (List.map Operation.hash_packed sl)
          ) operations
       ) in
-  Context.hash ~time:timestamp ?message context >>= fun context ->
+  let context = Context.hash ~time:timestamp ?message context in
   let header =
     { inc.header with
       level = Raw_level.to_int32 (Raw_level.succ inc.predecessor.level) ;

@@ -88,9 +88,9 @@ module type Dump_interface = sig
   end
 
   (* hash manipulation *)
-  val hash_export : hash -> MBytes.t
+  val hash_export : hash -> string
 
-  val hash_import : MBytes.t -> hash tzresult
+  val hash_import : string -> hash tzresult
 
   val hash_equal : hash -> hash -> bool
 

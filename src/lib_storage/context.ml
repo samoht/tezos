@@ -31,25 +31,21 @@ module Metadata = Irmin.Metadata.None
 module Hash = struct
   module H = Context_hash
 
-  (* XXX(samoht): probably not very efficient... *)
-  type t = H.t
+  type t = string
 
-  let pp = H.pp
+  let pp ppf t = H.pp ppf (H.of_string_exn t)
 
   let of_string x =
-    match H.of_b58check x with Ok x -> Ok x | Error _ -> assert false
+    match H.of_b58check x with Ok _ -> Ok x | Error _ -> assert false
 
   let t =
-    Irmin.Type.map ~cli:(pp, of_string)
-      Irmin.Type.(string_of (`Fixed H.size))
-      (fun x -> H.of_string_exn x)
-      (fun x -> H.to_string x)
+    Irmin.Type.like ~cli:(pp, of_string) Irmin.Type.(string_of (`Fixed H.size))
 
   let digest_size = H.size
 
-  let hash = H.hash
+  let hash h = H.hash (H.of_string_exn h)
 
-  let digest s = H.hash_string [s]
+  let digest s = H.to_string (H.hash_string [s])
 end
 
 module Node = struct
@@ -169,11 +165,11 @@ let current_test_chain_key = ["test_chain"]
 let current_data_key = ["data"]
 
 let exists index key =
-  Store.Commit.of_hash index.repo key
+  Store.Commit.of_hash index.repo (Context_hash.to_string key)
   >|= function None -> false | Some _ -> true
 
 let checkout index key =
-  Store.Commit.of_hash index.repo key
+  Store.Commit.of_hash index.repo (Context_hash.to_string key)
   >>= function
   | None -> Lwt.return_none
   | Some commit ->
@@ -204,14 +200,12 @@ let hash ~time ?(message = "") context =
   let node = Store.Tree.hash context.tree in
   let commit = P.Commit.Val.v ~parents ~node ~info in
   let x = P.Commit.Key.digest commit in
-  (* FIXME: this doesn't have to be lwt *)
-  Lwt.return x
+  Context_hash.of_string_exn x
 
 let commit ~time ?message context =
   raw_commit ~time ?message context
-  >>= fun commit ->
-  let h = Store.Commit.hash commit in
-  Lwt.return h
+  >|= fun commit ->
+  Context_hash.of_string_exn (Store.Commit.hash commit)
 
 (*-- Generic Store Primitives ------------------------------------------------*)
 
@@ -326,7 +320,8 @@ let commit_genesis index ~chain_id ~time ~protocol =
   raw_commit ~time ~message:"Genesis" ctxt
   >>= fun commit ->
   Store.Branch.set index.repo (get_branch chain_id) commit
-  >>= fun () -> Lwt.return (Store.Commit.hash commit)
+  >|= fun () ->
+  Context_hash.of_string_exn (Store.Commit.hash commit)
 
 let compute_testchain_genesis forked_block =
   let genesis = Block_hash.hash_bytes [Block_hash.to_bytes forked_block] in
@@ -340,7 +335,9 @@ let commit_test_chain_genesis index forked_block time ctxt =
   raw_commit ~time ~message ctxt
   >>= fun commit ->
   Store.Branch.set index.repo branch commit
-  >>= fun () -> return (chain_id, genesis, Store.Commit.hash commit)
+  >>= fun () ->
+  let hash = Context_hash.of_string_exn (Store.Commit.hash commit) in
+  return (chain_id, genesis, hash)
 
 let reset_test_chain ctxt forked_block timestamp =
   get_test_chain ctxt
@@ -362,10 +359,10 @@ let set_head index chain_id commit =
   let branch = get_branch chain_id in
   Store.Private.Branch.set
     (Store.Private.Repo.branch_t index.repo)
-    branch commit
+    branch (Context_hash.to_string commit)
 
 let set_master index commit =
-  Store.Commit.of_hash index.repo commit
+  Store.Commit.of_hash index.repo (Context_hash.to_string commit)
   >>= function
   | None -> assert false
   | Some commit -> Store.Branch.set index.repo Store.Branch.master commit
@@ -509,16 +506,17 @@ module Dumpable_context = struct
 
   let pp_tree = Irmin.Type.pp Store.tree_t
 
-  let hash_export h = Context_hash.to_bytes h
+  let hash_export h = h
 
-  let hash_import mb = Context_hash.of_bytes mb >>? fun h -> Ok h
+  let hash_import h = Ok h
 
-  let hash_equal h1 h2 = Context_hash.(h1 = h2)
+  let hash_equal h1 h2 = String.equal h1 h2
 
   let context_parents ctxt =
     match ctxt with
     | {parents= [commit]; _} ->
         let parents = Store.Commit.parents commit in
+        let parents = List.map Context_hash.of_string_exn parents in
         let parents = List.sort Context_hash.compare parents in
         parents
     | _ -> assert false
@@ -537,10 +535,14 @@ module Dumpable_context = struct
   let set_context ~info ~parents ctxt bh =
     (* let parents = List.sort Context_hash.compare parents in *)
     Store.Tree.clear_caches ctxt.tree;
+    let parents = List.map Context_hash.to_string parents in
     Store.Commit.v ctxt.index.repo ~info ~parents ctxt.tree
     >>= fun c ->
     let h = Store.Commit.hash c in
-    if Context_hash.equal bh.Block_header.shell.context h then
+    if Context_hash.equal
+        bh.Block_header.shell.context
+        (Context_hash.of_string_exn h)
+    then
       Lwt.return_some bh
     else assert false
 
@@ -646,6 +648,7 @@ let get_protocol_data_from_pruned_block index pruned_block =
   >>= fun test_chain_status ->
   data_node_hash context
   >>= fun data_key ->
+  let data_key = Context_hash.of_string_exn data_key in
   Lwt.return
     ( level
     , {Protocol_data.parents; protocol_hash; test_chain_status; data_key; info}
@@ -660,6 +663,8 @@ let load_protocol_data index pruned_blocks =
 (* Mock some Store types, so we can build our own Merkle tree. *)
 
 (* XXX(samoht): WAT? *)
+
+(*
 module Mock : sig
   val node : Store.Repo.t -> P.Node.key -> Store.node
 
@@ -687,7 +692,7 @@ end = struct
     let c : commit = {r; h; v} in
     (Obj.magic c : Store.commit)
 end
-
+*)
 (* ??? *)
 let validate_context_hash_consistency_and_commit ~data_hash:_
     ~expected_context_hash:_ ~timestamp:_ ~test_chain:_ ~protocol_hash:_
