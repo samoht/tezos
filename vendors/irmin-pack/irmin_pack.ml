@@ -42,6 +42,7 @@ let config ?(fresh = false) root =
 let ( // ) = Filename.concat
 
 let ( ++ ) = Int64.add
+let ( -- ) = Int64.sub
 
 module type IO = sig
   type t
@@ -315,7 +316,7 @@ module Index (H : Irmin.Hash.S) = struct
   let padL = Int64.of_int pad
 
   (* last allowed offset *)
-  let log_size = 1 * pad
+  let log_size = 30_000 * pad
 
   let log_sizeL = Int64.of_int log_size
 
@@ -555,6 +556,24 @@ module Index (H : Irmin.Hash.S) = struct
   let v ?fresh root =
     Lwt_mutex.with_lock create (fun () -> unsafe_v ?fresh root)
 
+  let find_in_page block off key =
+    let page_sizeL = 4096L in
+    let page_size = Int64.to_int page_sizeL in
+    let half_page_sizeL = Int64.div page_sizeL 2L in
+    let off = max 0L (off -- half_page_sizeL) in
+    let buf = Bytes.create page_size in
+    let decoder = Decoder.decoder `Manual 0 in
+    IO.read block ~off buf >>= fun () ->
+    let () = Decoder.src decoder buf 0 page_size in
+    let rec go () =
+      match Decoder.decode decoder with
+      | `Await -> Lwt.return_none
+      | `Entry e ->
+          if Irmin.Type.equal H.t e.hash key then Lwt.return_some e else go ()
+      | `End | `Malformed _ -> assert false
+    in
+    go ()
+
   let get_entry_at_off block off =
     let buf = Bytes.create pad in
     IO.read block ~off buf >|= fun () ->
@@ -562,35 +581,37 @@ module Index (H : Irmin.Hash.S) = struct
     let (`Entry e) = Decoder.r_entry h buf H.digest_size 12 in
     e
 
-  let _interpolation_search io key =
+  let interpolation_search io key =
+    IO.sync io.block >>= fun () ->
     let low = 0 in
-    let high = Int64.to_int (IO.offset io.block) in
+    let high = Int64.to_int (IO.offset io.block) - pad in
     let rec search low high =
-      get_entry_at_off io.block (Int64.of_int high) >>= fun highest_entry ->
-      let highest_hash = H.hash highest_entry.hash in
       get_entry_at_off io.block (Int64.of_int low) >>= fun lowest_entry ->
       let lowest_hash = H.hash lowest_entry.hash in
-      if high = low then
+      get_entry_at_off io.block (Int64.of_int high) >>= fun highest_entry ->
+      let highest_hash = H.hash highest_entry.hash in
+      if high < low || lowest_hash > H.hash key || highest_hash < H.hash key
+      then Lwt.return_none
+      else if high = low then
         if Irmin.Type.equal H.t lowest_entry.hash key then
           Lwt.return_some lowest_entry
         else Lwt.return_none
-      else if
-        high < low || lowest_hash > H.hash key || highest_hash < H.hash key
-      then Lwt.return_none
       else
-        let off =
-          Int64.of_int
-            ( low
-            + (high - low)
-              / (highest_hash - lowest_hash)
-              * (H.hash key - lowest_hash) )
+        let doff =
+          (high - low)
+          * ((H.hash key / 100000000) - (lowest_hash / 100000000))
+          / ((highest_hash / 100000000) - (lowest_hash / 100000000))
         in
-        get_entry_at_off io.block off >>= fun e ->
-        if Irmin.Type.equal H.t e.hash key then Lwt.return_some e
-        else if H.hash e.hash < H.hash key then search (low + 1) high
-        else search low (high - 1)
+        let off = low + doff - (doff mod pad) in
+        let offL = Int64.of_int off in
+        find_in_page io.block offL key >>= function
+        | None ->
+            get_entry_at_off io.block offL >>= fun e ->
+            if H.hash e.hash < H.hash key then search (off + pad) high
+            else search low (off - pad)
+        | Some e -> Lwt.return_some e
     in
-    search low high
+    if high < 0 then Lwt.return_none else search low high
 
   let read_more io =
     IO.read io.block ~off:io.i_off io.i >|= fun () ->
@@ -602,23 +623,7 @@ module Index (H : Irmin.Hash.S) = struct
     let index = t.index in
     match Tbl.find t.cache key with
     | e -> Lwt.return (Some e)
-    | exception Not_found ->
-        index.decoder <- Decoder.decoder `Manual 0;
-        index.i_off <- 0L;
-        index.pos <- 0L;
-        let rec go () =
-          match Decoder.decode index.decoder with
-          | `Await -> read_more index >>= fun () -> go ()
-          | `Entry e ->
-              Tbl.add t.cache e.hash e;
-              index.pos <- index.pos ++ padL;
-              if Irmin.Type.equal H.t e.hash key then Lwt.return (Some e)
-              else if index.pos >= index.max then Lwt.return None
-              else go ()
-          | `Malformed _ -> assert false
-          | `End -> assert false
-        in
-        if index.pos < index.max then go () else Lwt.return None
+    | exception Not_found -> interpolation_search index key
 
   let find t key = Lwt_mutex.with_lock t.lock (fun () -> unsafe_find t key)
 
@@ -641,28 +646,14 @@ module Index (H : Irmin.Hash.S) = struct
     let compare a b = compare (H.hash a) (H.hash b)
   end)
 
-  let sorted_list_of_io io =
-    let map = ref HashMap.empty in
-    io.decoder <- Decoder.decoder `Manual 0;
-    io.i_off <- 0L;
-    io.pos <- 0L;
-    let rec go () =
-      match Decoder.decode io.decoder with
-      | `Await -> read_more io >>= fun () -> go ()
-      | `Entry e ->
-          map := HashMap.add e.hash e !map;
-          io.pos <- io.pos ++ padL;
-          if io.pos >= io.max then Lwt.return_unit else go ()
-      | `Malformed _ -> assert false
-      | `End -> assert false
-    in
-    go () >|= fun () -> HashMap.bindings !map
-
   let merge tmp log index =
     index.decoder <- Decoder.decoder `Manual 0;
     index.pos <- 0L;
     index.i_off <- 0L;
-    sorted_list_of_io log >>= fun log_list ->
+    let log_list =
+      Tbl.fold (fun h k acc -> HashMap.add h k acc) log HashMap.empty
+      |> HashMap.bindings
+    in
     let rec get_index_entry : entry option -> entry Lwt.t = function
       | Some e -> Lwt.return e
       | None -> (
@@ -704,22 +695,24 @@ module Index (H : Irmin.Hash.S) = struct
         l "[index] append %a off=%Ld len=%d" pp_hash key off len );
     let entry = { hash = key; offset = off; len } in
     append_entry t.log entry;
+    Tbl.add t.cache key entry;
     if Int64.compare (IO.offset t.log.block) log_sizeL > 0 then
       IO.sync t.log.block >>= fun () ->
       let tmp_path = t.root // "store.index.tmp" in
       let index_path = index_path t.root in
       IO.v tmp_path >>= fun tmp ->
       let tmp = new_io tmp in
-      merge tmp t.log t.index >>= fun () ->
+      merge tmp t.cache t.index >>= fun () ->
       IO.sync tmp.block >>= fun () ->
       IO.close t.index.block >>= fun () ->
       io_clear t.log >>= fun () ->
       IO.rename tmp_path index_path >>= fun () ->
       IO.close tmp.block >>= fun () ->
-      IO.v index_path >|= fun new_index -> t.index <- new_io new_index
-    else (
-      Tbl.add t.cache key entry;
-      Lwt.return_unit )
+      IO.v index_path >|= fun new_index ->
+      Tbl.clear t.cache;
+      t.index <- new_io new_index
+    else
+      Lwt.return_unit
 
   let append t key ~off ~len =
     Lwt_mutex.with_lock t.lock (fun () -> unsafe_append t key ~off ~len)
@@ -886,7 +879,9 @@ module Pack (K : Irmin.Hash.S) = struct
           let offset k =
             Index.find t.pack.index k >|= function
             | Some e -> e.offset
-            | None -> assert false
+            | None ->
+                Log.err (fun l -> l "XXX cannot find %a" pp_hash k);
+                assert false
           in
           let dict = Dict.index t.pack.dict in
           V.to_bin ~offset ~dict v k >>= fun buf ->
