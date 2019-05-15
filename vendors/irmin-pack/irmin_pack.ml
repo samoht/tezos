@@ -42,6 +42,7 @@ let config ?(fresh = false) root =
 let ( // ) = Filename.concat
 
 let ( ++ ) = Int64.add
+
 let ( -- ) = Int64.sub
 
 module type IO = sig
@@ -49,9 +50,7 @@ module type IO = sig
 
   val v : string -> t Lwt.t
 
-  val close : t -> unit Lwt.t
-
-  val rename : string -> string -> unit Lwt.t
+  val rename : src:t -> dst:t -> unit Lwt.t
 
   val clear : t -> unit Lwt.t
 
@@ -63,28 +62,17 @@ module type IO = sig
 
   val offset : t -> int64
 
+  val file : t -> string
+
   val sync : t -> unit Lwt.t
 end
 
 module IO : IO = struct
-  type fd = {
-    fd : Lwt_unix.file_descr;
-    mutable cursor : int64;
-    lock : Lwt_mutex.t
-  }
-
-  type t = {
-    mutable offset : int64;
-    mutable flushed : int64;
-    fd : fd;
-    buf : Buffer.t
-  }
-
-  let header = 8L
-
-  let ( ++ ) = Int64.add
-
   module Raw = struct
+    type t = { fd : Lwt_unix.file_descr; mutable cursor : int64 }
+
+    let v fd = { fd; cursor = 0L }
+
     let really_write fd buf =
       let rec aux off len =
         Lwt_unix.write fd buf off len >>= fun w ->
@@ -116,9 +104,6 @@ module IO : IO = struct
       lseek t off >>= fun () ->
       really_read t.fd buf >|= fun n -> t.cursor <- off ++ Int64.of_int n
 
-    let read t ~off buf =
-      Lwt_mutex.with_lock t.lock (fun () -> unsafe_read t ~off buf)
-
     let unsafe_set_offset fd n =
       let buf = Irmin.Type.(to_bin_string int64) n in
       unsafe_write fd ~off:0L buf
@@ -131,23 +116,46 @@ module IO : IO = struct
       | Error (`Msg e) -> Fmt.failwith "get_offset: %s" e
   end
 
-  let close t = Lwt_unix.close t.fd.fd
+  type t = {
+    lock : Lwt_mutex.t;
+    file : string;
+    mutable raw : Raw.t;
+    mutable offset : int64;
+    mutable flushed : int64;
+    buf : Buffer.t
+  }
 
-  let rename = Lwt_unix.rename
-
-  let fd fd = { lock = Lwt_mutex.create (); fd; cursor = 0L }
+  let header = 8L
 
   let unsafe_sync t =
     let buf = Buffer.contents t.buf in
     Buffer.clear t.buf;
     if buf = "" then Lwt.return ()
     else
-      Raw.unsafe_write t.fd ~off:t.flushed buf >>= fun () ->
-      Raw.unsafe_set_offset t.fd t.offset >|= fun () ->
-      t.flushed <- t.flushed ++ Int64.of_int (String.length buf);
-      assert (t.flushed <= t.offset ++ header)
+      Raw.unsafe_write t.raw ~off:t.flushed buf >>= fun () ->
+      Raw.unsafe_set_offset t.raw t.offset >|= fun () ->
+      t.flushed <- t.flushed ++ Int64.of_int (String.length buf)
 
-  let sync t = Lwt_mutex.with_lock t.fd.lock (fun () -> unsafe_sync t)
+  (*      if not (t.flushed <= t.offset ++ header) then (
+        Fmt.epr "XXX sync %s flushed=%Ld offset+header=%Ld\n%!" t.file
+          t.flushed (t.offset ++ header);
+        assert false ) *)
+
+  let sync t = Lwt_mutex.with_lock t.lock (fun () -> unsafe_sync t)
+
+  let unsafe_rename ~src ~dst =
+    Log.debug (fun l -> l "IO rename %s => %s" src.file dst.file);
+    unsafe_sync src >>= fun () ->
+    Lwt_unix.fsync src.raw.fd >>= fun () ->
+    Lwt_unix.close dst.raw.fd >>= fun () ->
+    Lwt_unix.rename src.file dst.file >|= fun () ->
+    dst.offset <- src.offset;
+    dst.flushed <- src.flushed;
+    dst.raw <- src.raw
+
+  let rename ~src ~dst =
+    Lwt_mutex.with_lock src.lock (fun () ->
+        Lwt_mutex.with_lock dst.lock (fun () -> unsafe_rename ~src ~dst) )
 
   let append t buf =
     Buffer.add_string t.buf buf;
@@ -156,19 +164,22 @@ module IO : IO = struct
 
   let unsafe_set t ~off buf =
     unsafe_sync t >>= fun () ->
-    Raw.unsafe_write t.fd ~off:(header ++ off) buf >|= fun () ->
+    Raw.unsafe_write t.raw ~off:(header ++ off) buf >|= fun () ->
     let len = Int64.of_int (String.length buf) in
     let off = header ++ off ++ len in
     assert (off <= t.flushed)
 
   let set t ~off buf =
-    Lwt_mutex.with_lock t.fd.lock (fun () -> unsafe_set t ~off buf)
+    Lwt_mutex.with_lock t.lock (fun () -> unsafe_set t ~off buf)
 
-  let read t ~off buf = Raw.read t.fd ~off:(header ++ off) buf
-
-  (* Lwt_unix.fsync t.write.fd *)
+  let read t ~off buf =
+    Lwt_mutex.with_lock t.lock (fun () ->
+        assert (header ++ off <= t.flushed);
+        Raw.unsafe_read t.raw ~off:(header ++ off) buf )
 
   let offset t = t.offset
+
+  let file t = t.file
 
   let protect_unix_exn = function
     | Unix.Unix_error _ as e -> Lwt.fail (Failure (Printexc.to_string e))
@@ -203,20 +214,26 @@ module IO : IO = struct
     Lwt.return ()
 
   let v file =
-    let v ~offset ~fd =
+    let v ~offset raw =
       let buf = Buffer.create (1024 * 1024) in
-      { offset; fd; buf; flushed = header ++ offset }
+      { file;
+        lock = Lwt_mutex.create ();
+        offset;
+        raw;
+        buf;
+        flushed = header ++ offset
+      }
     in
     mkdir (Filename.dirname file) >>= fun () ->
     Lwt_unix.file_exists file >>= function
     | false ->
         Lwt_unix.openfile file Unix.[ O_CREAT; O_RDWR ] 0o644 >>= fun x ->
-        let fd = fd x in
-        Raw.unsafe_set_offset fd 0L >|= fun () -> v ~offset:0L ~fd
+        let raw = Raw.v x in
+        Raw.unsafe_set_offset raw 0L >|= fun () -> v ~offset:0L raw
     | true ->
         Lwt_unix.openfile file Unix.[ O_EXCL; O_RDWR ] 0o644 >>= fun x ->
-        let fd = fd x in
-        Raw.unsafe_get_offset fd >|= fun offset -> v ~offset ~fd
+        let raw = Raw.v x in
+        Raw.unsafe_get_offset raw >|= fun offset -> v ~offset raw
 end
 
 module Dict = struct
@@ -254,6 +271,7 @@ module Dict = struct
   let find t id =
     Log.debug (fun l -> l "[dict] find %d" id);
     let v = try Some (Hashtbl.find t.index id) with Not_found -> None in
+    Fmt.epr "XXX [dict] find %d -> %a\n%!" id Fmt.(Dump.option (fmt "%S")) v;
     Lwt.return v
 
   let clear t =
@@ -316,7 +334,7 @@ module Index (H : Irmin.Hash.S) = struct
   let padL = Int64.of_int pad
 
   (* last allowed offset *)
-  let log_size = 30_000 * pad
+  let log_size = 1 * pad
 
   let log_sizeL = Int64.of_int log_size
 
@@ -506,6 +524,7 @@ module Index (H : Irmin.Hash.S) = struct
 
   type t = {
     cache : entry Tbl.t;
+    offsets : (int64, entry) Hashtbl.t;
     log : io;
     mutable index : io;
     lock : Lwt_mutex.t;
@@ -543,6 +562,7 @@ module Index (H : Irmin.Hash.S) = struct
       let t =
         { cache = Tbl.create 997;
           root;
+          offsets = Hashtbl.create 997;
           lock = Lwt_mutex.create ();
           log = new_io log_block;
           index = new_io index_block
@@ -618,12 +638,21 @@ module Index (H : Irmin.Hash.S) = struct
     io.i_off <- io.i_off ++ 4096L;
     Decoder.src io.decoder io.i 0 4096
 
+  let dump_entry ppf e = Fmt.pf ppf "[offset:%Ld len:%d]" e.offset e.len
+
   let unsafe_find t key =
     Log.debug (fun l -> l "[index] find %a" pp_hash key);
     let index = t.index in
-    match Tbl.find t.cache key with
-    | e -> Lwt.return (Some e)
-    | exception Not_found -> interpolation_search index key
+    let v =
+      match Tbl.find t.cache key with
+      | e -> Lwt.return (Some e)
+      | exception Not_found -> interpolation_search index key
+    in
+    v >|= fun v ->
+    Fmt.epr "XXX [index] find %a -> %a\n%!" pp_hash key
+      Fmt.(Dump.option dump_entry)
+      v;
+    v
 
   let find t key = Lwt_mutex.with_lock t.lock (fun () -> unsafe_find t key)
 
@@ -638,6 +667,8 @@ module Index (H : Irmin.Hash.S) = struct
     encode_bin int64 buf entry.offset;
     encode_bin int32 buf (Int32.of_int entry.len);
     io.max <- io.max ++ padL;
+    Fmt.epr "XXX APPEND %s %a %Ld %d\n%!" (IO.file io.block) pp_hash entry.hash
+      entry.offset (H.hash entry.hash);
     IO.append io.block (Buffer.contents buf)
 
   module HashMap = Map.Make (struct
@@ -646,7 +677,7 @@ module Index (H : Irmin.Hash.S) = struct
     let compare a b = compare (H.hash a) (H.hash b)
   end)
 
-  let merge tmp log index =
+  let merge xx tmp log index =
     index.decoder <- Decoder.decoder `Manual 0;
     index.pos <- 0L;
     index.i_off <- 0L;
@@ -654,38 +685,60 @@ module Index (H : Irmin.Hash.S) = struct
       Tbl.fold (fun h k acc -> HashMap.add h k acc) log HashMap.empty
       |> HashMap.bindings
     in
-    let rec get_index_entry : entry option -> entry Lwt.t = function
-      | Some e -> Lwt.return e
+    let rec get_index_entry : entry option -> entry option Lwt.t = function
+      | Some e -> Lwt.return (Some e)
       | None -> (
-        match Decoder.decode index.decoder with
-        | `Await -> read_more index >>= fun () -> get_index_entry None
-        | `Entry e ->
-            index.pos <- index.pos ++ padL;
-            Lwt.return e
-        | _ -> assert false )
+          if index.max = 0L then Lwt.return None
+          else
+            match Decoder.decode index.decoder with
+            | `Await -> read_more index >>= fun () -> get_index_entry None
+            | `Entry e ->
+                index.pos <- index.pos ++ padL;
+                Lwt.return (Some e)
+            | _ -> assert false )
     in
     let rec go last_read l =
-      get_index_entry last_read >>= fun e ->
-      match l with
-      | (k, v) :: t ->
-          let last, rst =
-            if H.hash e.hash = H.hash k then (
-              append_entry tmp e;
-              (None, t) )
-            else if H.hash e.hash < H.hash k then (
-              append_entry tmp e;
-              (None, l) )
-            else (
-              append_entry tmp v;
-              (Some e, t) )
-          in
-          if index.pos >= index.max && last = None then (
-            List.iter (fun (_, e) -> append_entry tmp e) rst;
-            Lwt.return_unit )
-          else go last rst
-      | [] ->
-          append_entry tmp e;
-          if index.pos >= index.max then Lwt.return_unit else go None []
+      get_index_entry last_read >>= function
+      | None ->
+          List.iter
+            (fun (_, e) ->
+              Fmt.epr "XXX 4\n%!";
+              append_entry tmp e )
+            l;
+          Lwt.return_unit
+      | Some e -> (
+        match l with
+        | (k, v) :: t ->
+            let last, rst =
+              if Irmin.Type.equal H.t e.hash k then (
+                Fmt.epr "XXX 0 offset=%Ld %a\n%!" e.offset
+                  Fmt.(Dump.list (Dump.pair (fmt "%Ld") (fmt ":%Ld")))
+                  (Hashtbl.fold
+                     (fun k e acc -> (k, e.offset) :: acc)
+                     xx.offsets []);
+                append_entry tmp e;
+                (None, t) )
+              else if H.hash e.hash = H.hash k then assert false
+              else if H.hash e.hash < H.hash k then (
+                Fmt.epr "XXX 1\n%!";
+                append_entry tmp e;
+                (None, l) )
+              else (
+                Fmt.epr "XXX 2\n%!";
+                append_entry tmp v;
+                (Some e, t) )
+            in
+            if index.pos >= index.max && last = None then (
+              List.iter
+                (fun (_, e) ->
+                  Fmt.epr "XXX 3\n%!";
+                  append_entry tmp e )
+                rst;
+              Lwt.return_unit )
+            else go last rst
+        | [] ->
+            append_entry tmp e;
+            if index.pos >= index.max then Lwt.return_unit else go None [] )
     in
     go None log_list
 
@@ -696,23 +749,24 @@ module Index (H : Irmin.Hash.S) = struct
     let entry = { hash = key; offset = off; len } in
     append_entry t.log entry;
     Tbl.add t.cache key entry;
-    if Int64.compare (IO.offset t.log.block) log_sizeL > 0 then
+    Hashtbl.add t.offsets entry.offset entry;
+    if Int64.compare (IO.offset t.log.block) log_sizeL > 0 then (
       IO.sync t.log.block >>= fun () ->
       let tmp_path = t.root // "store.index.tmp" in
-      let index_path = index_path t.root in
       IO.v tmp_path >>= fun tmp ->
-      let tmp = new_io tmp in
-      merge tmp t.cache t.index >>= fun () ->
-      IO.sync tmp.block >>= fun () ->
-      IO.close t.index.block >>= fun () ->
-      io_clear t.log >>= fun () ->
-      IO.rename tmp_path index_path >>= fun () ->
-      IO.close tmp.block >>= fun () ->
-      IO.v index_path >|= fun new_index ->
+      let tmp_io = new_io tmp in
+      merge t tmp_io t.cache t.index >>= fun () ->
+      IO.rename ~src:tmp ~dst:t.index.block >>= fun () ->
+      (* reset the index parser *)
+      t.index.decoder <- Decoder.decoder `Manual 0;
+      t.index.pos <- 0L;
+      t.index.i_off <- 0L;
+      t.index.max <- IO.offset t.index.block;
+      (* reset the log *)
+      io_clear t.log >|= fun () ->
       Tbl.clear t.cache;
-      t.index <- new_io new_index
-    else
-      Lwt.return_unit
+      Hashtbl.clear t.offsets )
+    else Lwt.return_unit
 
   let append t key ~off ~len =
     Lwt_mutex.with_lock t.lock (fun () -> unsafe_append t key ~off ~len)
@@ -830,9 +884,11 @@ module Pack (K : Irmin.Hash.S) = struct
     let check_key k v =
       let k' = digest v in
       if Irmin.Type.equal K.t k k' then Lwt.return ()
-      else
+      else (
+        Fmt.epr "XXX %a %S\n%!" (Irmin.Type.pp V.t) v
+          (Irmin.Type.to_bin_string V.t v);
         Fmt.kstrf Lwt.fail_invalid_arg "corrupted value: got %a, expecting %a."
-          pp_hash k' pp_hash k
+          pp_hash k' pp_hash k )
 
     let unsafe_find t k =
       Log.debug (fun l -> l "[pack] find %a" pp_hash k);
@@ -845,9 +901,26 @@ module Pack (K : Irmin.Hash.S) = struct
               let buf = Bytes.create e.len in
               IO.read t.pack.block ~off:e.offset buf >>= fun () ->
               let hash off =
-                let buf = Bytes.create K.digest_size in
-                IO.read t.pack.block ~off buf >|= fun () ->
-                Irmin.Type.of_bin_string K.t (Bytes.unsafe_to_string buf)
+                match Hashtbl.find t.pack.index.offsets off with
+                | e ->
+                    Fmt.epr "XXX hash (in cache): %Ld -> %a\n%!" off pp_hash
+                      e.hash;
+                    Lwt.return (Ok e.hash)
+                | exception Not_found -> (
+                    Fmt.epr "XXX hash (not found)\n%!";
+                    let buf = Bytes.create K.digest_size in
+                    (* XXX(samoht): this read operation is unsafe: we
+                       should use a cache of off->hash of entries not
+                       flushed to the pack file yet *)
+                    IO.read t.pack.block ~off buf >|= fun () ->
+                    let r =
+                      Irmin.Type.of_bin_string K.t (Bytes.unsafe_to_string buf)
+                    in
+                    match r with
+                    | Ok k ->
+                        Fmt.epr "XXX hash %Ld -> %a\n%!" off pp_hash k;
+                        r
+                    | _ -> r )
               in
               let dict = Dict.find t.pack.dict in
               V.of_bin ~hash ~dict (Bytes.unsafe_to_string buf) >>= function
@@ -875,7 +948,9 @@ module Pack (K : Irmin.Hash.S) = struct
       Index.mem t.pack.index k >>= function
       | true -> Lwt.return ()
       | false ->
-          Log.debug (fun l -> l "[pack] append %a" pp_hash k);
+          Log.debug (fun l ->
+              l "[pack] append %a %a %S" pp_hash k (Irmin.Type.pp V.t) v
+                (Irmin.Type.to_bin_string V.t v) );
           let offset k =
             Index.find t.pack.index k >|= function
             | Some e -> e.offset
