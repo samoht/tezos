@@ -610,12 +610,34 @@ module Index (H : Irmin.Hash.S) = struct
     in
     go 0
 
-  let get_entry_at_off block off =
-    let buf = Bytes.create pad in
-    IO.read block ~off buf >|= fun () ->
-    let h = Decoder.r_hash (Bytes.sub buf 0 H.digest_size) 0 H.digest_size in
-    let (`Entry e) = Decoder.r_entry h buf H.digest_size 12 in
-    e
+  let get_entry_at_off pages block off =
+    let page_off = Int64.(mul (div off page_len) page_len) in
+    (*    Fmt.epr "XXX find_in_page off=%Ld page_off=%Ld page_len=%d\n%!" off page_off page_len; *)
+    let page () =
+      match Hashtbl.find pages page_off with
+      | buf -> Lwt.return buf
+      | exception Not_found ->
+          let page_len =
+            if page_off ++ page_len > IO.offset block then
+              Int64.to_int (IO.offset block)
+            else  Int64.to_int (padL ++ page_len)
+          in
+          (*          Fmt.epr "XXX READ %s\n%!" (IO.file block); *)
+          let buf = Bytes.create page_len in
+          IO.read block ~off:page_off buf >|= fun () ->
+          Hashtbl.add pages page_off buf;
+          buf
+    in
+    page () >>= fun page ->
+    let decoder = Decoder.decoder `Manual 0 in
+    let ioff = Int64.to_int (off -- page_off) in
+    Decoder.src decoder page ioff (Bytes.length page - ioff);
+    match Decoder.decode decoder with
+    | `Await ->
+        (*           Fmt.epr "XXX find_in_page AWAIT\n%!"; *)
+        assert false
+    | `Entry e -> Lwt.return e
+    | `End | `Malformed _ -> assert false
 
   let interpolation_search io key =
     (*    Fmt.epr "XXX interpolation_search %a %d\n%!" pp_hash key (H.hash key); *)
@@ -625,9 +647,9 @@ module Index (H : Irmin.Hash.S) = struct
     let high = Int64.to_int (IO.offset io.block) - pad in
     let rec search low high =
       (*      Fmt.epr "XXX search low=%d high=%d\n%!" low high; *)
-      get_entry_at_off io.block (Int64.of_int low) >>= fun lowest_entry ->
+      get_entry_at_off pages io.block (Int64.of_int low) >>= fun lowest_entry ->
       let lowest_hash = H.hash lowest_entry.hash in
-      get_entry_at_off io.block (Int64.of_int high) >>= fun highest_entry ->
+      get_entry_at_off pages io.block (Int64.of_int high) >>= fun highest_entry ->
       let highest_hash = H.hash highest_entry.hash in
       (*      Fmt.epr "XXX lowest=%d highest=%d hash=%d\n%!" lowest_hash highest_hash (H.hash key);
               Fmt.epr "XXX %b %b %b\n%!" (high < low) (lowest_hash > H.hash key) (highest_hash < H.hash key); *)
@@ -648,7 +670,7 @@ module Index (H : Irmin.Hash.S) = struct
         (*        Fmt.epr "XXX search max=%Ld %Ld\n%!" io.max offL; *)
         find_in_page io.block pages offL key >>= function
         | None ->
-            get_entry_at_off io.block offL >>= fun e ->
+            get_entry_at_off pages io.block offL >>= fun e ->
             if H.hash e.hash < H.hash key then search (off + pad) high
             else search low (off - pad)
         | Some e -> Lwt.return_some e
