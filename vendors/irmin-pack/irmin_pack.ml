@@ -122,7 +122,7 @@ module IO : IO = struct
     mutable raw : Raw.t;
     mutable offset : int64;
     mutable flushed : int64;
-    buf : Buffer.t
+    buf : Buffer.t;
   }
 
   let header = 8L
@@ -173,6 +173,7 @@ module IO : IO = struct
     Lwt_mutex.with_lock t.lock (fun () -> unsafe_set t ~off buf)
 
   let read t ~off buf =
+    (*    Fmt.epr "XXX READ %s %d\n%!" t.file (Bytes.length buf); *)
     Lwt_mutex.with_lock t.lock (fun () ->
         assert (header ++ off <= t.flushed);
         Raw.unsafe_read t.raw ~off:(header ++ off) buf )
@@ -334,7 +335,7 @@ module Index (H : Irmin.Hash.S) = struct
   let padL = Int64.of_int pad
 
   (* last allowed offset *)
-  let log_size = 3_000 * pad
+  let log_size = 30_000 * pad
 
   let log_sizeL = Int64.of_int log_size
 
@@ -619,7 +620,7 @@ module Index (H : Irmin.Hash.S) = struct
       | exception Not_found ->
           let page_len =
             if page_off ++ page_len > IO.offset block then
-              Int64.to_int (IO.offset block)
+              Int64.to_int (IO.offset block -- page_off)
             else  Int64.to_int (padL ++ page_len)
           in
           (*          Fmt.epr "XXX READ %s\n%!" (IO.file block); *)
