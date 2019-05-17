@@ -360,11 +360,14 @@ module Index (H : Irmin.Hash.S) = struct
     let equal x y = Irmin.Type.equal H.t x y
   end)
 
+  module BF = Bloomf.Make (H)
+
   type t = {
     cache : entry Tbl.t;
     offsets : (int64, entry) Hashtbl.t;
     log : IO.t;
     index : IO.t;
+    entries : BF.t;
     root : string;
     lock : Lwt_mutex.t
   }
@@ -372,6 +375,7 @@ module Index (H : Irmin.Hash.S) = struct
   let unsafe_clear t =
     IO.clear t.log >>= fun () ->
     IO.clear t.index >|= fun () ->
+    BF.clear t.entries;
     Tbl.clear t.cache;
     Hashtbl.clear t.offsets
 
@@ -405,7 +409,8 @@ module Index (H : Irmin.Hash.S) = struct
           offsets = Hashtbl.create 997;
           log;
           index;
-          lock = Lwt_mutex.create ()
+          lock = Lwt_mutex.create ();
+          entries = BF.create 500_0000
         }
       in
       Hashtbl.add files root t;
@@ -491,14 +496,15 @@ module Index (H : Irmin.Hash.S) = struct
   let find t key = Lwt_mutex.with_lock t.lock (fun () -> unsafe_find t key)
 
   let unsafe_mem t key =
-    if Tbl.mem t.cache key then Lwt.return true
+    if not (BF.mem t.entries key) then Lwt.return false
+    else if Tbl.mem t.cache key then Lwt.return true
     else unsafe_find t key >|= function None -> false | Some _ -> true
 
   let mem t key = Lwt_mutex.with_lock t.lock (fun () -> unsafe_mem t key)
 
   let append_entry t e =
     (*    Fmt.epr "XXX append_entry %s:%Ld %a offset=%Ld hash=%d\n%!" (IO.file t)
-      (IO.offset t) pp_hash e.hash e.offset (H.hash e.hash); *)
+          (IO.offset t) pp_hash e.hash e.offset (H.hash e.hash); *)
     IO.append t (encode_entry e)
 
   module HashMap = Map.Make (struct
@@ -579,6 +585,7 @@ module Index (H : Irmin.Hash.S) = struct
     append_entry t.log entry;
     Tbl.add t.cache key entry;
     Hashtbl.add t.offsets entry.offset entry;
+    BF.add t.entries key;
     if Int64.compare (IO.offset t.log) log_sizeL > 0 then (
       IO.sync t.log >>= fun () ->
       let tmp_path = t.root // "store.index.tmp" in
