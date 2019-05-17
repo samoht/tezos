@@ -330,7 +330,7 @@ module Index (H : Irmin.Hash.S) = struct
   let pad = H.digest_size + offset_size + length_size
 
   (* last allowed offset *)
-  let log_size = 30_000 * pad
+  let log_size = 300_000 * pad
 
   let log_sizeL = Int64.of_int log_size
 
@@ -431,8 +431,9 @@ module Index (H : Irmin.Hash.S) = struct
   let v ?fresh root =
     Lwt_mutex.with_lock create (fun () -> unsafe_v ?fresh root)
 
+  let page_sizeL = Int64.of_int (1000 * pad)
+
   let get_entry block ~pages off =
-    let page_sizeL = 4096L in
     let page_off = Int64.(mul (div off page_sizeL) page_sizeL) in
     let page () =
       match Lru.find page_off pages with
@@ -441,7 +442,7 @@ module Index (H : Irmin.Hash.S) = struct
           let page_size =
             if page_off ++ page_sizeL > IO.offset block then
               Int64.to_int (IO.offset block -- page_off)
-            else Int64.to_int (Int64.of_int pad ++ page_sizeL)
+            else Int64.to_int page_sizeL
           in
           let buf = Bytes.create page_size in
           IO.read block ~off:page_off buf >|= fun () ->
