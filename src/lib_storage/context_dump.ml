@@ -698,6 +698,9 @@ module Make (I : Dump_interface) = struct
             fail
             @@ Writing_error (Printf.sprintf "Bad assert at %s %d %d" s l c)
         | err ->
+            let x = Printexc.get_callstack 100 in
+            Printexc.print_raw_backtrace stderr x;
+            output_string stderr "\n%!";
             Error_monad.pp_exn Format.err_formatter err ;
             fail @@ Writing_error "unknown error")
 
@@ -835,6 +838,9 @@ module Make (I : Dump_interface) = struct
         | Assert_failure (s, l, c) ->
             fail @@ Bad_read (Printf.sprintf "Bad assert at %s %d %d" s l c)
         | exc ->
+            let x = Printexc.get_callstack 100 in
+            Printexc.print_raw_backtrace stderr x;
+            output_string stderr "\n%!";
             Format.kasprintf
               (fun x -> fail (Bad_read x))
               "unknown error: %a" Error_monad.pp_exn exc)
