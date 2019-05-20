@@ -178,6 +178,7 @@ let checkout index key =
   | None -> Lwt.return_none
   | Some commit ->
       let tree = Store.Commit.tree commit in
+      Store.Tree.clear_caches tree;
       let ctxt = {index; tree; parents= [commit]} in
       Lwt.return_some ctxt
 
@@ -190,6 +191,7 @@ let raw_commit ~time ?(message = "") context =
     Irmin.Info.v ~date:(Time.to_seconds time) ~author:"Tezos" message
   in
   let parents = List.map Store.Commit.hash context.parents in
+  Store.Tree.clear_caches context.tree;
   Store.Commit.v context.index.repo ~info ~parents context.tree
 
 module P = Store.Private
@@ -534,6 +536,7 @@ module Dumpable_context = struct
 
   let set_context ~info ~parents ctxt bh =
     (* let parents = List.sort Context_hash.compare parents in *)
+    Store.Tree.clear_caches ctxt.tree;
     Store.Commit.v ctxt.index.repo ~info ~parents ctxt.tree
     >>= fun c ->
     let h = Store.Commit.hash c in
