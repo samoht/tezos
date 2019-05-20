@@ -579,7 +579,14 @@ module Dumpable_context = struct
 
   let add_mbytes (Batch (t, _)) tree key bytes =
     Store.Private.Contents.add t bytes
-    >>= fun hash -> Store.Tree.add tree key bytes >|= fun tree -> (hash, tree)
+    >>= fun hash -> Store.Tree.add tree key bytes >>= fun tree ->
+    Store.Tree.get_tree tree key >|= fun x ->
+    Store.Tree.clear_caches x;
+    (hash, tree)
+
+  let rec path_len p = match Path.decons p with
+    | Some (_, p) -> 1 + path_len p
+    | None -> 0
 
   let add_dir index (Batch (x, y)) tree key l =
     let rec fold_list sub_tree = function
@@ -603,8 +610,10 @@ module Dumpable_context = struct
     | Some sub_tree ->
         Store.export_tree index.repo x y sub_tree
         >>= fun hash ->
+        Store.Tree.clear_caches sub_tree;
         Store.Tree.add_tree tree key sub_tree
-        >>= fun tree -> Lwt.return_some (hash, tree)
+        >>= fun t ->
+        Lwt.return_some (hash, t)
 
   module Commit_hash = Context_hash
   module Block_header = Block_header
