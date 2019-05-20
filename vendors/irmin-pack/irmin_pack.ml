@@ -1006,7 +1006,7 @@ struct
               | `Contents (v, m) -> offset v >|= fun off -> `Contents (off, m)
               | `Node v -> offset v >|= fun off -> `Node off
             in
-            Lwt_list.map_p
+            Lwt_list.map_s
               (fun (s, v) -> step s >>= fun s -> value v >|= fun v -> (s, v))
               entries
             >|= fun entries ->
@@ -1039,7 +1039,7 @@ struct
                 in
                 Lwt.catch
                   (fun () ->
-                    Lwt_list.map_p
+                    Lwt_list.map_s
                       (fun (s, v) ->
                         step s >>= fun s -> value v >|= fun v -> (s, v) )
                       entries
