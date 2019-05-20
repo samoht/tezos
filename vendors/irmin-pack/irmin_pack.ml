@@ -367,7 +367,7 @@ module Index (H : Irmin.Hash.S) = struct
         let weight _ = 1
       end)
 
-  let lru_size = 30_000
+  let lru_size = 1_000
 
   type t = {
     cache : entry Tbl.t;
@@ -437,8 +437,8 @@ module Index (H : Irmin.Hash.S) = struct
     let page_off = Int64.(mul (div off page_sizeL) page_sizeL) in
     let page () =
       match Lru.find page_off t.pages with
-      | Some (buf, lru) ->
-          t.pages <- lru;
+      | Some buf ->
+          t.pages <- Lru.promote page_off t.pages;
           Lwt.return buf
       | None ->
           let page_size =
@@ -475,8 +475,8 @@ module Index (H : Irmin.Hash.S) = struct
         else
           let doff =
             (high - low)
-            * ((H.hash key / 100000000) - (lowest_hash / 100000000))
-            / ((highest_hash / 100000000) - (lowest_hash / 100000000))
+            * ((H.hash key / 1_000_000_000) - (lowest_hash / 1_000_000_000))
+            / ((highest_hash / 1_000_000_000) - (lowest_hash / 1_000_000_000))
           in
           let off = low + doff - (doff mod pad) in
           let offL = Int64.of_int off in
