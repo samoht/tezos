@@ -163,157 +163,22 @@ let alist_iter2_lwt compare_k f l1 l2 =
   alist_iter2 compare_k (fun left right -> l3 := f left right :: !l3) l1 l2;
   Lwt_list.iter_s (fun b -> b >>= fun () -> Lwt.return_unit) (List.rev !l3)
 
-module Lru = struct
-  (* Extracted from https://github.com/pqwy/lru
-     Copyright (c) 2016 David Kaloper Meršinjak *)
-
-  module Q = struct
-    type 'a node = {
-      value : 'a;
-      mutable next : 'a node option;
-      mutable prev : 'a node option
-    }
-
-    type 'a t = {
-      mutable first : 'a node option;
-      mutable last : 'a node option
-    }
-
-    let clear t =
-      t.first <- None;
-      t.last <- None
-
-    let detach t n =
-      let np = n.prev and nn = n.next in
-      ( match np with
-      | None -> t.first <- nn
-      | Some x ->
-          x.next <- nn;
-          n.prev <- None );
-      match nn with
-      | None -> t.last <- np
-      | Some x ->
-          x.prev <- np;
-          n.next <- None
-
-    let append t n =
-      let on = Some n in
-      match t.last with
-      | Some x as l ->
-          x.next <- on;
-          t.last <- on;
-          n.prev <- l
-      | None ->
-          t.first <- on;
-          t.last <- on
-
-    let node x = { value = x; prev = None; next = None }
-
-    let create () = { first = None; last = None }
-
-    let iter f t =
-      let rec go f = function
-        | Some n ->
-            f n.value;
-            go f n.next
-        | _ -> ()
-      in
-      go f t.first
-  end
-
-  module Bake (HT : Hashtbl.SeededS) = struct
-    type key = HT.key
-
-    type 'a t = {
-      ht : (key * 'a) Q.node HT.t;
-      q : (key * 'a) Q.t;
-      mutable cap : int;
-      mutable w : int
-    }
-
-    let size t = HT.length t.ht
-
-    let weight t = t.w
-
-    let create ?random cap =
-      { cap; w = 0; ht = HT.create ?random cap; q = Q.create () }
-
-    let drop_lru t =
-      match t.q.Q.first with
-      | None -> ()
-      | Some ({ Q.value = k, _; _ } as n) ->
-          t.w <- t.w - 1;
-          HT.remove t.ht k;
-          Q.detach t.q n
-
-    let rec trim t =
-      if weight t > t.cap then (
-        drop_lru t;
-        trim t )
-
-    let remove k t =
-      try
-        let n = HT.find t.ht k in
-        t.w <- t.w - 1;
-        HT.remove t.ht k;
-        Q.detach t.q n
-      with Not_found -> ()
-
-    let clear t =
-      HT.clear t.ht;
-      Q.clear t.q
-
-    let add k v t =
-      remove k t;
-      let n = Q.node (k, v) in
-      t.w <- t.w + 1;
-      HT.add t.ht k n;
-      Q.append t.q n
-
-    let promote k t =
-      try
-        let n = HT.find t.ht k in
-        Q.(
-          detach t.q n;
-          append t.q n)
-      with Not_found -> ()
-
-    let find k t =
-      try Some (snd (HT.find t.ht k).Q.value) with Not_found -> None
-
-    let iter f t = Q.iter (fun (k, v) -> f k v) t.q
-  end
-
-  module SeededHash (H : Hashtbl.HashedType) = struct
-    include H
-
-    let hash _ x = hash x
-  end
-
-  module Make (K : Hashtbl.HashedType) =
-    Bake (Hashtbl.MakeSeeded (SeededHash (K)))
-end
-
-module Cache (K : S.HASH) : sig
+module Cache (K : Type.S) : sig
   type 'a t
 
   type key = K.t
 
-  val create : int -> 'a t
+  val create : is_empty:('a -> bool) -> int -> 'a t
 
   val find : 'a t -> key -> 'a
 
   val add : 'a t -> key -> 'a -> unit
 
-  val remove : 'a t -> key -> unit
-
   val iter : (key -> 'a -> unit) -> 'a t -> unit
-
-  val clear : 'a t -> unit
 
   val length : 'a t -> int
 end = struct
-  module M = Lru.Make (struct
+  module M = Ephemeron.K1.Make (struct
     type t = K.t
 
     let equal (x : t) (y : t) = Type.equal K.t x y
@@ -321,24 +186,20 @@ end = struct
     let hash (x : t) = Type.short_hash K.t x
   end)
 
-  include M
+  type 'a t = { is_empty : 'a -> bool; m : 'a M.t }
 
-  let create x = M.create x
+  type key = K.t
 
-  let length = M.size
+  let create ~is_empty x = { is_empty; m = M.create x }
 
-  let add t k v =
-    M.add k v t;
-    M.trim t
+  let length t =
+    M.fold (fun _ v acc -> if t.is_empty v then acc else acc + 1) t.m 0
 
-  let find t k =
-    match M.find k t with
-    | None -> raise Not_found
-    | Some v ->
-        M.promote k t;
-        v
+  let add t k v = M.add t.m k v
 
-  let remove t k = M.remove k t
+  let find t k = M.find t.m k
+
+  let iter f t = M.iter f t.m
 end
 
 module Make (P : S.PRIVATE) = struct
@@ -388,9 +249,14 @@ module Make (P : S.PRIVATE) = struct
 
     type t = { mutable v : v; mutable info : info }
 
-    module Cache = Cache (P.Hash)
+    module Hashes = Cache (P.Hash)
+    module Values = Cache (P.Contents.Val)
 
-    let cache = Cache.create 10_000
+    let info_is_empty i = i.hash = None && i.value = None
+
+    let values = Values.create ~is_empty:info_is_empty 1000
+
+    let hashes = Hashes.create ~is_empty:info_is_empty 1000
 
     let v =
       let open Type in
@@ -400,17 +266,12 @@ module Make (P : S.PRIVATE) = struct
       |~ case1 "value" P.Contents.Val.t (fun v -> Value v)
       |> sealv
 
-    let clear_info ?v i =
-      let hash =
-        match (v, i.hash) with
-        | Some (Hash (_, h)), _ | _, Some h -> Some h
-        | _ -> None
-      in
-      i.value <- None;
-      i.hash <- None;
-      match hash with None -> () | Some h -> Cache.remove cache h
+    let clear_info i =
+      if not (info_is_empty i) then (
+        i.value <- None;
+        i.hash <- None )
 
-    let clear t = clear_info ~v:t.v t.info
+    let clear t = clear_info t.info
 
     let merge_info ~into:x y =
       let () =
@@ -433,16 +294,25 @@ module Make (P : S.PRIVATE) = struct
       in
       (* hashcons the info *)
       let info =
-        match hash with
-        | None -> { hash; value }
-        | Some k -> (
+        match (hash, value) with
+        | Some _, Some _ -> assert false
+        | None, None -> { hash; value }
+        | None, Some v -> (
             cnt.contents_cache_find <- cnt.contents_cache_find + 1;
-            match Cache.find cache k with
+            match Values.find values v with
             | exception Not_found ->
                 cnt.contents_cache_miss <- cnt.contents_cache_miss + 1;
                 let i = { hash; value } in
-                Log.debug (fun l -> l "Contents.of_v: cache %a" pp_hash k);
-                Cache.add cache k i;
+                Values.add values v i;
+                i
+            | i -> i )
+        | Some k, None -> (
+            cnt.contents_cache_find <- cnt.contents_cache_find + 1;
+            match Hashes.find hashes k with
+            | exception Not_found ->
+                cnt.contents_cache_miss <- cnt.contents_cache_miss + 1;
+                let i = { hash; value } in
+                Hashes.add hashes k i;
                 i
             | i -> i )
       in
@@ -457,7 +327,6 @@ module Make (P : S.PRIVATE) = struct
       t
 
     let export ?clear:c repo t k =
-      Log.debug (fun l -> l "Tree.Contents.export clear=%b" (c = Some true));
       let hash = t.info.hash in
       if c = Some true then clear t;
       match (t.v, hash) with
@@ -493,50 +362,57 @@ module Make (P : S.PRIVATE) = struct
       | Value v, _, Some v' -> if v != v' then t.v <- Value v'
       | _ -> ()
 
+    let hash_of_value c v =
+      cnt.contents_hash <- cnt.contents_hash + 1;
+      let k = P.Contents.Key.hash v in
+      c.info.hash <- Some k;
+      let () =
+        cnt.contents_cache_find <- cnt.contents_cache_find + 1;
+        match Hashes.find hashes k with
+        | i ->
+            let old = c.info in
+            c.info <- i;
+            merge_info ~into:i old;
+            hashcons c
+        | exception Not_found ->
+            cnt.contents_cache_miss <- cnt.contents_cache_miss + 1;
+            Hashes.add hashes k c.info
+      in
+      match c.info.hash with Some k -> k | None -> k
+
     let to_hash c =
       match hash c with
       | Some k -> k
       | None -> (
-        match value c with
-        | None -> assert false
-        | Some v ->
-            cnt.contents_hash <- cnt.contents_hash + 1;
-            let k = P.Contents.Key.hash v in
-            let () =
-              cnt.contents_cache_find <- cnt.contents_find + 1;
-              match Cache.find cache k with
-              | i ->
-                  c.info <- i;
-                  hashcons c
-              | exception Not_found ->
-                  cnt.contents_cache_miss <- cnt.contents_cache_miss + 1;
-                  c.info.hash <- Some k;
-                  Log.debug (fun l -> l "Contents.to_hash: cache %a" pp_hash k);
-                  Cache.add cache k c.info
-            in
-            let k =
-              match c.info.hash with
-              | Some k -> k
-              | None ->
-                  c.info.hash <- Some k;
-                  k
-            in
-            k )
+        match value c with None -> assert false | Some v -> hash_of_value c v )
+
+    let value_of_hash t repo k =
+      cnt.contents_find <- cnt.contents_find + 1;
+      P.Contents.find (P.Repo.contents_t repo) k >|= function
+      | None -> None
+      | Some v as vo ->
+          t.info.value <- vo;
+          let () =
+            cnt.contents_cache_find <- cnt.contents_cache_find + 1;
+            match Values.find values v with
+            | i ->
+                let old = t.info in
+                t.info <- i;
+                merge_info ~into:i old;
+                hashcons t
+            | exception Not_found ->
+                cnt.contents_cache_miss <- cnt.contents_cache_miss + 1;
+                Values.add values v t.info
+          in
+          t.info.value
 
     let to_value t =
-      match (t.v, t.info.value) with
-      | _, Some v -> Lwt.return (Some v)
-      | Value v, None ->
-          t.info.value <- Some v;
-          Lwt.return (Some v)
-      | Hash (repo, k), None -> (
-          Log.debug (fun l -> l "Node.Contents.to_value %a" pp_hash k);
-          cnt.contents_find <- cnt.contents_find + 1;
-          P.Contents.find (P.Repo.contents_t repo) k >|= function
-          | None -> None
-          | Some v ->
-              t.info.value <- Some v;
-              Some v )
+      match value t with
+      | Some v -> Lwt.return (Some v)
+      | None -> (
+        match t.v with
+        | Value v -> Lwt.return (Some v)
+        | Hash (repo, k) -> value_of_hash t repo k )
 
     let equal (x : t) (y : t) =
       x == y
@@ -674,7 +550,7 @@ module Make (P : S.PRIVATE) = struct
 
     module Cache = Cache (P.Hash)
 
-    let cache = Cache.create 10_001
+    let cache = Cache.create ~is_empty:info_is_empty 100
 
     let rec clear_map ~max_depth depth m =
       StepMap.iter
@@ -690,16 +566,10 @@ module Make (P : S.PRIVATE) = struct
         | Some (Map m), _ | _, Some m -> Some m
         | _ -> None
       in
-      if depth >= max_depth then (
-        let hash =
-          match (v, i.hash) with
-          | Some (Hash (_, h)), _ | _, Some h -> Some h
-          | _ -> None
-        in
+      if depth >= max_depth && not (info_is_empty i) then (
         i.value <- None;
         i.map <- None;
-        i.hash <- None;
-        match hash with None -> () | Some h -> Cache.remove cache h );
+        i.hash <- None );
       match map with
       | None -> ()
       | Some m -> (clear_map [@tailcall]) ~max_depth depth m
@@ -731,7 +601,6 @@ module Make (P : S.PRIVATE) = struct
             | exception Not_found ->
                 cnt.node_cache_miss <- cnt.node_cache_miss + 1;
                 let i = { hash; map; value } in
-                Log.debug (fun l -> l "Node.of_v: cache %a" pp_hash k);
                 Cache.add cache k i;
                 i
             | i -> i )
@@ -748,13 +617,13 @@ module Make (P : S.PRIVATE) = struct
 
     (* export t to the given repo and clear the cache *)
     let export ?clear:c repo t k =
-      Log.debug (fun l ->
-          l "Tree.Node.export_and_clear_cache clear=%b" (c = Some true) );
       let hash = t.info.hash in
       if c = Some true then clear t;
       match t.v with
       | Hash (_, k) -> t.v <- Hash (repo, k)
-      | Value _ | Map _ -> (
+      | Value (_, v) when P.Node.Val.is_empty v -> ()
+      | Map m when StepMap.is_empty m -> ()
+      | _ -> (
         match hash with
         | None -> t.v <- Hash (repo, k)
         | Some k -> t.v <- Hash (repo, k) )
@@ -828,23 +697,21 @@ module Make (P : S.PRIVATE) = struct
     let hash_of_value t v =
       cnt.node_hash <- cnt.node_hash + 1;
       let k = P.Node.Key.hash v in
+      t.info.hash <- Some k;
       let () =
         cnt.node_cache_find <- cnt.node_cache_find + 1;
         match Cache.find cache k with
         | i ->
+            let old = t.info in
             t.info <- i;
+            merge_info ~into:i old;
             hashcons t
         | exception Not_found ->
             cnt.node_cache_miss <- cnt.node_cache_miss + 1;
             t.info.hash <- Some k;
-            Log.debug (fun l -> l "Node.hash_of_value: cache %a" pp_hash k);
             Cache.add cache k t.info
       in
-      match t.info.hash with
-      | Some k -> k
-      | None ->
-          t.info.hash <- Some k;
-          k
+      match t.info.hash with Some k -> k | None -> k
 
     let rec to_hash : type a. t -> (hash -> a) -> a =
      fun t k ->
@@ -885,23 +752,25 @@ module Make (P : S.PRIVATE) = struct
 
     let value_of_map m = value_of_map m (fun t -> t)
 
+    let value_of_hash t repo k =
+      match t.info.value with
+      | Some _ as v -> Lwt.return v
+      | None -> (
+          cnt.node_find <- cnt.node_find + 1;
+          P.Node.find (P.Repo.node_t repo) k >|= function
+          | None -> None
+          | Some _ as v ->
+              t.info.value <- v;
+              v )
+
     let to_value t =
       match value t with
       | Some v -> Lwt.return (Some v)
       | None -> (
-          ( match t.v with
-          | Value (_, v) -> Lwt.return (Some v)
-          | Map m -> Lwt.return (Some (value_of_map m))
-          | Hash (repo, k) ->
-              Log.debug (fun l -> l "Tree.Node.to_value %a" pp_hash k);
-              cnt.node_find <- cnt.node_find + 1;
-              P.Node.find (P.Repo.node_t repo) k )
-          >|= fun value ->
-          match t.info.value with
-          | None ->
-              t.info.value <- value;
-              value
-          | Some _ as v -> v )
+        match t.v with
+        | Value (_, v) -> Lwt.return (Some v)
+        | Map m -> Lwt.return (Some (value_of_map m))
+        | Hash (repo, k) -> value_of_hash t repo k )
 
     let to_map t =
       match map t with
@@ -916,9 +785,7 @@ module Make (P : S.PRIVATE) = struct
           | Map m -> Lwt.return (Some m)
           | Value (repo, v) -> Lwt.return (of_value repo v)
           | Hash (repo, k) -> (
-              Log.debug (fun l -> l "Tree.Node.to_map %a" pp_hash k);
-              cnt.node_find <- cnt.node_find + 1;
-              P.Node.find (P.Repo.node_t repo) k >|= function
+              value_of_hash t repo k >|= function
               | None -> None
               | Some v -> of_value repo v ) )
 
@@ -975,16 +842,37 @@ module Make (P : S.PRIVATE) = struct
       to_map t >|= function None -> [] | Some m -> StepMap.bindings m
 
     let findv t step =
-      to_map t >>= function
-      | None -> Lwt.return None
-      | Some m -> (
+      let of_map m =
         match StepMap.find step m with
         | exception Not_found -> Lwt.return None
         | `Node n -> Lwt.return (Some (`Node n))
         | `Contents (c, m) -> (
             Contents.to_value c >|= function
             | None -> None
-            | Some c -> Some (`Contents (c, m)) ) )
+            | Some c -> Some (`Contents (c, m)) )
+      in
+      let of_value repo v =
+        match P.Node.Val.find v step with
+        | None -> Lwt.return None
+        | Some (`Contents (c, m)) -> (
+            let c = Contents.of_hash repo c in
+            Contents.to_value c >|= function
+            | None -> None
+            | Some c -> Some (`Contents (c, m)) )
+        | Some (`Node n) ->
+            let n = of_hash repo n in
+            Lwt.return (Some (`Node n))
+      in
+      match map t with
+      | Some m -> of_map m
+      | None -> (
+        match t.v with
+        | Map m -> of_map m
+        | Value (repo, v) -> of_value repo v
+        | Hash (repo, v) -> (
+            value_of_hash t repo v >>= function
+            | None -> Lwt.return None
+            | Some v -> of_value repo v ) )
 
     let dummy_marks = Hashes.create 0
 
@@ -1656,15 +1544,16 @@ module Make (P : S.PRIVATE) = struct
 
   module Cache = struct
     let length () =
-      ( `Contents Contents.(Cache.length cache),
+      ( `Contents Contents.(Hashes.length hashes),
         `Nodes Node.(Cache.length cache) )
 
     let clear ?depth () =
       Log.info (fun l -> l "Tree.Cache.clear");
       match depth with
       | None ->
-          Contents.Cache.clear Contents.cache;
-          Node.Cache.clear Node.cache
+          Contents.Hashes.iter (fun _ -> Contents.clear_info) Contents.hashes;
+          Contents.Values.iter (fun _ -> Contents.clear_info) Contents.values;
+          Node.Cache.iter (fun _ i -> Node.clear_info i) Node.cache
       | Some depth ->
           Node.Cache.iter (fun _ i -> Node.clear_info ~depth i) Node.cache
 
@@ -1673,11 +1562,11 @@ module Make (P : S.PRIVATE) = struct
         | None -> Fmt.pf ppf "<none>"
         | Some y -> Type.pp t ppf y
       in
-      Contents.Cache.iter
+      Contents.Hashes.iter
         (fun k v ->
-          Fmt.pf ppf "C|%a: value:%a@." pp_hash k (ppo P.Contents.Val.t)
+          Fmt.pf ppf "C|%a: %a@." pp_hash k (ppo P.Contents.Val.t)
             v.Contents.value )
-        Contents.cache;
+        Contents.hashes;
       Node.Cache.iter
         (fun k v -> Fmt.pf ppf "N|%a: %a@." pp_hash k Node.dump_info v)
         Node.cache
