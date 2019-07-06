@@ -1,0 +1,4 @@
+(library
+ (public_name irmin-pack.index.unix)
+ (name     index_unix)
+ (libraries unix irmin-pack.index))
