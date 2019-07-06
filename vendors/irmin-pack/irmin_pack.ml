@@ -179,7 +179,7 @@ module IO : IO = struct
     Log.debug (fun l -> l "IO sync %s" t.file);
     let buf = Buffer.contents t.buf in
     let offset = t.offset in
-    Buffer.clear t.buf;
+    Buffer.reset t.buf;
     if buf = "" then ()
     else (
       Raw.unsafe_write t.raw ~off:t.flushed buf;
@@ -195,6 +195,7 @@ module IO : IO = struct
   let auto_flush_limit = 1_000_000L
 
   let append t buf =
+    assert (String.length buf < 10_000);
     Buffer.add_string t.buf buf;
     let len = Int64.of_int (String.length buf) in
     t.offset <- t.offset ++ len;
@@ -241,14 +242,14 @@ module IO : IO = struct
   let clear t =
     t.offset <- 0L;
     t.flushed <- header;
-    Buffer.clear t.buf
+    Buffer.reset t.buf
 
   let buffers = Hashtbl.create 256
 
   let buffer file =
     try
       let buf = Hashtbl.find buffers file in
-      Buffer.clear buf;
+      Buffer.reset buf;
       buf
     with Not_found ->
       let buf = Buffer.create (4 * 1024) in
@@ -404,62 +405,6 @@ module Cache (K : Irmin.Type.S) = Lru (struct
 
   let equal (x : t) (y : t) = Irmin.Type.equal K.t x y
 end)
-
-module Pool : sig
-  type t
-
-  val v : length:int -> lru_size:int -> IO.t -> t
-
-  val read : t -> off:int64 -> len:int -> bytes * int
-
-  val trim : off:int64 -> t -> unit
-end = struct
-  module Lru = Lru (struct
-    include Int64
-
-    let hash = Hashtbl.hash
-  end)
-
-  type t = { pages : bytes Lru.t; length : int; lru_size : int; io : IO.t }
-
-  let v ~length ~lru_size io =
-    let pages = Lru.create lru_size in
-    { pages; length; io; lru_size }
-
-  let rec read t ~off ~len =
-    let name = IO.name t.io in
-    if Filename.check_suffix name "pack" then
-      stats.pack_page_read <- succ stats.pack_page_read
-    else stats.index_page_read <- succ stats.index_page_read;
-    let l = Int64.of_int t.length in
-    let page_off = Int64.(mul (div off l) l) in
-    let ioff = Int64.to_int (off -- page_off) in
-    match Lru.find t.pages page_off with
-    | buf ->
-        if t.length - ioff < len then (
-          Lru.remove t.pages page_off;
-          (read [@tailcall]) t ~off ~len )
-        else (buf, ioff)
-    | exception Not_found ->
-        let length = max t.length (ioff + len) in
-        let length =
-          if page_off ++ Int64.of_int length > IO.offset t.io then
-            Int64.to_int (IO.offset t.io -- page_off)
-          else length
-        in
-        let buf = Bytes.create length in
-        if Filename.check_suffix name "pack" then
-          stats.pack_page_miss <- succ stats.pack_page_miss
-        else stats.index_page_miss <- succ stats.index_page_miss;
-        let n = IO.read t.io ~off:page_off buf in
-        assert (n = length);
-        Lru.add t.pages page_off buf;
-        (buf, ioff)
-
-  let trim ~off t =
-    let max = off -- Int64.of_int t.length in
-    Lru.filter (fun h _ -> h <= max) t.pages
-end
 
 module Dict = struct
   type t = {
@@ -651,7 +596,6 @@ module Pack (K : Irmin.Hash.S) = struct
       pack : 'a t;
       lru : V.t Lru.t;
       staging : V.t Tbl.t;
-      pages : Pool.t
     }
 
     type key = K.t
@@ -677,7 +621,6 @@ module Pack (K : Irmin.Hash.S) = struct
           { staging;
             lru;
             pack;
-            pages = Pool.v ~lru_size ~length:page_size pack.block
           }
         in
         (if fresh then clear t else Lwt.return ()) >|= fun () ->

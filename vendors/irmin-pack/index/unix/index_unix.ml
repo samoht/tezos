@@ -85,7 +85,7 @@ module IO : Index.IO = struct
   let flush t =
     let buf = Buffer.contents t.buf in
     let offset = t.offset in
-    Buffer.clear t.buf;
+    Buffer.reset t.buf;
     if buf = "" then ()
     else (
       Raw.unsafe_write t.raw ~off:t.flushed buf;
@@ -108,6 +108,7 @@ module IO : Index.IO = struct
   let auto_flush_limit = 1_000_000L
 
   let append t buf =
+    assert (String.length buf < 10_000);
     Buffer.add_string t.buf buf;
     let len = Int64.of_int (String.length buf) in
     t.offset <- t.offset ++ len;
@@ -147,14 +148,14 @@ module IO : Index.IO = struct
   let clear t =
     t.offset <- 0L;
     t.flushed <- header;
-    Buffer.clear t.buf
+    Buffer.reset t.buf
 
   let buffers = Hashtbl.create 256
 
   let buffer file =
     try
       let buf = Hashtbl.find buffers file in
-      Buffer.clear buf;
+      Buffer.reset buf;
       buf
     with Not_found ->
       let buf = Buffer.create (4 * 1024) in
