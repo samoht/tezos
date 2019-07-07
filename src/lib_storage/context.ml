@@ -167,6 +167,8 @@ module Store =
     (Node)
     (Commit)
 
+module DB = Store
+
 module P = Store.Private
 
 type index = {

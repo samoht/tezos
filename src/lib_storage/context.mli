@@ -25,6 +25,8 @@
 
 (** Tezos - Versioned, block indexed (key x value) store *)
 
+module DB: Irmin.KV with type contents = string and type metadata = unit
+
 (** A block-indexed (key x value) store directory.  *)
 type index
 
