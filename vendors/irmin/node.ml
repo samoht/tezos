@@ -96,6 +96,10 @@ struct
 
   let list t = List.rev_map (fun (_, e) -> of_entry e) (StepMap.bindings t)
 
+  let iter f t = StepMap.iter (fun _ e -> let k, v = of_entry e in f k v) t
+
+  let length t = StepMap.cardinal t
+
   let find t s =
     try
       let _, v = of_entry (StepMap.find s t) in
@@ -426,6 +430,10 @@ module V1 (N : S.NODE) = struct
     { n; entries }
 
   let list t = t.entries
+
+  let iter f t = List.iter (fun (k, v) -> f k v) t.entries
+
+  let length t = N.length t.n
 
   let empty = { n = N.empty; entries = [] }
 

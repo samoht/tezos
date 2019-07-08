@@ -156,6 +156,10 @@ module type NODE = sig
 
   val list : t -> (step * value) list
 
+  val iter: (step -> value -> unit) -> t -> unit
+
+  val length: t -> int
+
   val empty : t
 
   val is_empty : t -> bool

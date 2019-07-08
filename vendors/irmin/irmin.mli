@@ -1552,6 +1552,10 @@ module Private : sig
       val list : t -> (step * value) list
       (** [list t] is the contents of [t]. *)
 
+      val iter: (step -> value -> unit) -> t -> unit
+
+      val length: t -> int
+
       val empty : t
       (** [empty] is the empty node. *)
 

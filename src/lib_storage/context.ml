@@ -76,9 +76,7 @@ module Node = struct
 
     type kind = [`Node | `Contents of Metadata.t]
 
-    type entry = {key: string Lazy.t; kind: kind; name: M.step; node: Hash.t}
-
-    let compare_entries a b = compare (Lazy.force a.key) (Lazy.force b.key)
+    type entry = {kind: kind; name: M.step; node: Hash.t}
 
     (* Irmin 1.4 uses int64 to store string lengths *)
     let step_t =
@@ -101,12 +99,7 @@ module Node = struct
       let open Irmin.Type in
       record "Tree.entry" (fun kind name node ->
           let kind = match kind with None -> `Node | Some m -> `Contents m in
-          let key =
-            match kind with
-            | `Node -> lazy (name ^ "/")
-            | `Contents _ -> lazy name
-          in
-          {key; kind; name; node} )
+          {kind; name; node} )
       |+ field "kind" metadata_t (function
            | {kind= `Node; _} -> None
            | {kind= `Contents m; _} -> Some m )
@@ -117,24 +110,23 @@ module Node = struct
     let entries_t : entry list Irmin.Type.t =
       Irmin.Type.(list ~len:`Int64 entry_t)
 
-    let import_entry (s, v) =
+    let entry s v =
       match v with
-      | `Node h -> {key= lazy (s ^ "/"); name= s; kind= `Node; node= h}
-      | `Contents (h, m) -> {key= lazy s; name= s; kind= `Contents m; node= h}
-
-    let import t = List.map import_entry (M.list t)
+      | `Node h -> {name= s; kind= `Node; node= h}
+      | `Contents (h, m) -> {name= s; kind= `Contents m; node= h}
 
     (* store the entries before hashing to be compatible with Tezos v1 *)
-    let pre_hash entries =
-      let entries = List.fast_sort compare_entries entries in
-      Irmin.Type.pre_hash entries_t entries
+    let pre_hash entries f =
+      (* FIXME(samoht): do we really care about the weird order *)
+      Irmin.Type.(pre_hash int64) (Int64.of_int (M.length entries)) f;
+      M.iter (fun k v ->
+          Irmin.Type.pre_hash entry_t (entry k v) f
+        ) entries
   end
 
   include M
 
-  let pre_hash_v1 x = V1.pre_hash (V1.import x)
-
-  let t = Irmin.Type.(like t ~pre_hash:pre_hash_v1)
+  let t = Irmin.Type.(like t ~pre_hash:V1.pre_hash)
 end
 
 module Commit = struct
