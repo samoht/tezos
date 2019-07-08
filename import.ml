@@ -115,32 +115,19 @@ let append x y z k v =
       let c = Commit.export c in
       P.Commit.unsafe_append z k c
 
-let move ~src:(db, txn) ~dst:repo ~batch_size =
+let move ~src:(db, txn) ~dst:repo =
   let count = ref 0 in
   Lmdb.opencursor txn db >>* fun c ->
   Lmdb.cursor_first c >>* fun () ->
-  let rec aux () =
-    P.Repo.batch repo (fun x y z ->
-        let rec aux = function
-          | 0 -> Lwt.return true
-          | n ->
-              incr count;
-              if !count mod 100 = 0 then Fmt.epr "\r%a%!" pp_stats ();
-              Lmdb.cursor_get c >>* fun (key, value) ->
-              Lwt.async (fun () -> append x y z key value);
-              match Lmdb.cursor_next c with
-              | Ok () -> aux (n-1)
-              | Error e ->
-                  Fmt.epr "[error] %a\n%!" Lmdb.pp_error e;
-                  Lwt.return false
-        in
-        aux batch_size
-      )
-    >>= function
-    | true -> aux ()
-    | false -> Lwt.return ()
-  in
-  aux () >|= fun () ->
+  P.Repo.batch repo (fun x y z ->
+      Lmdb.cursor_fold_left c ~init:() ~f:(fun () (key, value) ->
+          incr count;
+          if !count mod 100 = 0 then Fmt.epr "\r%a%!" pp_stats ();
+          Lwt.async (fun () -> append x y z key value);
+          Ok ()
+        ) >>* fun () ->
+      Lwt.return ()
+    ) >|= fun () ->
   Fmt.epr "\n[done]\n"
 
 let irmin root =
@@ -151,7 +138,7 @@ let irmin root =
 let run root =
   let lmdb = lmdb (Filename.concat root "context") in
   irmin (Filename.concat root "context-pack") >>= fun irmin ->
-  move ~src:lmdb ~dst:irmin ~batch_size:1
+  move ~src:lmdb ~dst:irmin
 
 let () =
   if Array.length Sys.argv <> 2 then Fmt.epr "usage: %s <data-dir>" Sys.argv.(0);
