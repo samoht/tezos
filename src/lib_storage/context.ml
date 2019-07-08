@@ -52,7 +52,7 @@ end = struct
     | Ok _ -> Ok x
     | Error _ -> todo "Hash.of_string"
 
-  let short_hash h = H.hash (to_context_hash h)
+  let short_hash h = Int64.to_int @@ EndianString.BigEndian.get_int64 h 0
 
   let t : t Irmin.Type.t =
     Irmin.Type.like
