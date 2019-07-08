@@ -99,21 +99,21 @@ let classify k =
   | Some ("node",key) -> incr nodes; `Node (hash_of_string key)
   | _ -> failwith "invalid key"
 
-let skip (_ : Store.hash) = ()
+let skip _ = Lwt.return ()
 
 let append x y z k v =
   let v = Bigstring.to_string v in
   match classify k with
-  | `Contents _ ->
-      P.Contents.add x (contents_of_string v) >|= skip
-  | `Node _ ->
+  | `Contents k ->
+      P.Contents.unsafe_append x k (contents_of_string v)
+  | `Node k ->
       let n = node_of_string v in
       let n = Node.export n in
-      P.Node.add y n >|= skip
-  | `Commit _ ->
+      P.Node.unsafe_append y k n
+  | `Commit k ->
       let c = commit_of_string v in
       let c = Commit.export c in
-      P.Commit.add z c >|= skip
+      P.Commit.unsafe_append z k c
 
 let move ~src:(db, txn) ~dst:repo ~batch_size =
   let count = ref 0 in
@@ -127,7 +127,7 @@ let move ~src:(db, txn) ~dst:repo ~batch_size =
               incr count;
               if !count mod 100 = 0 then Fmt.epr "\r%a%!" pp_stats ();
               Lmdb.cursor_get c >>* fun (key, value) ->
-              append x y z key value >>= fun () ->
+              Lwt.async (fun () -> append x y z key value);
               match Lmdb.cursor_next c with
               | Ok () -> aux (n-1)
               | Error e ->

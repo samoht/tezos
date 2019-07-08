@@ -862,6 +862,8 @@ module type CONTENT_ADDRESSABLE_STORE = sig
   (** Write the contents of a value to the store. It's the
       responsibility of the content-addressable store to generate a
       consistent key. *)
+
+  val unsafe_append: [> `Write] t -> key -> value -> unit Lwt.t
 end
 
 (** Append-onlye backend store. *)

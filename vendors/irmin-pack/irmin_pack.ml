@@ -1319,6 +1319,11 @@ struct
             in
             t
         end)
+
+        let unsafe_append t k v =
+          unsafe_append t k v;
+          Lwt.return ()
+
       end
 
       include Irmin.Contents.Store (CA)
@@ -1493,7 +1498,7 @@ struct
             in
             List.fold_left aux empty l
 
-        let fold f t init =
+        let fold f t ~hash init =
           let rec inode t k =
             match t with
             | Empty -> k Val.empty
@@ -1523,8 +1528,7 @@ struct
                   k entries
           in
           inode t (fun v ->
-              let values = list t in
-              let hash = hash_values values in
+              let hash = hash t in
               let v = { v with hash } in
               init hash v )
 
@@ -1738,11 +1742,22 @@ struct
         let add t v =
           let n = Val.list v in
           let v = Inode.Tree.v n in
-          Inode.Tree.save
+          Inode.Tree.save 
+            ~hash:(fun t -> Inode.Tree.hash_values (Inode.Tree.list t))
             ~add:(fun k v ->
               Inode.unsafe_append t k v;
               Lwt.return () )
             v
+
+        let unsafe_append t k v =
+          let n = Val.list v in
+          let v = Inode.Tree.v n in
+          Inode.Tree.save ~hash:(fun _ -> k)
+            ~add:(fun k v ->
+              Inode.unsafe_append t k v;
+              Lwt.return () )
+            v
+          >|= fun _ -> ()
 
         let batch = Inode.batch
 
@@ -1774,6 +1789,11 @@ struct
             in
             v
         end)
+
+        let unsafe_append t k v =
+          unsafe_append t k v;
+          Lwt.return ()
+
       end
 
       include Irmin.Private.Commit.Store (Node) (CA)

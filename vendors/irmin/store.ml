@@ -44,9 +44,12 @@ struct
           Fmt.kstrf Lwt.fail_invalid_arg
             "corrupted value: got %a, expecting %a" pp_key k' pp_key k
 
+  let unsafe_append = add
+
   let add t v =
     let k = hash v in
     add t k v >|= fun () -> k
+
 end
 
 module Make (P : S.PRIVATE) = struct

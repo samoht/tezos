@@ -168,6 +168,8 @@ struct
 
   let add (_, t) = S.add t
 
+  let unsafe_append (_, t) = S.unsafe_append t
+
   let all_contents t =
     let kvs = S.Val.list t in
     List.fold_left
