@@ -103,12 +103,11 @@ module Atomic_write (K : Irmin.Type.S) (V : Irmin.Hash.S) = struct
     w : W.t
   }
 
-  let page = Bytes.create 4
-
   let read_length32 ~off block =
-    let n = IO.read block ~off page in
+    let buf = Bytes.create 4 in
+    let n = IO.read block ~off buf in
     assert (n = 4);
-    let n, v = Irmin.Type.(decode_bin int32) (Bytes.unsafe_to_string page) 0 in
+    let n, v = Irmin.Type.(decode_bin int32) (Bytes.unsafe_to_string buf) 0 in
     assert (n = 4);
     Int32.to_int v
 
@@ -385,8 +384,8 @@ struct
         let readonly = readonly config in
         let shared = shared config in
         let index =
-          Index.v ~fresh ~shared ~readonly ~log_size:10_000
-            ~fan_out_size:16 root
+          Index.v ~fresh ~shared ~readonly ~log_size:10_000 ~fan_out_size:16
+            root
         in
         Contents.CA.v ~fresh ~shared ~readonly ~lru_size ~index root
         >>= fun contents ->

@@ -122,9 +122,7 @@ let with_cache = IO.with_cache
 
 module IO = IO.Unix
 
-module File
-    (Index : Pack_index.S)
-    (K : Irmin.Hash.S with type t = Index.full_key) =
+module File (Index : Pack_index.S) (K : Irmin.Hash.S with type t = Index.key) =
 struct
   module Tbl = Table (K)
 
@@ -213,16 +211,12 @@ struct
 
     let pp_hash = Irmin.Type.pp K.t
 
-    let buffer_for_hash = Bytes.create K.hash_size
-
     let io_read_and_decode_hash ~off t =
-      let n = IO.read t.pack.block ~off buffer_for_hash in
+      let buf = Bytes.create K.hash_size in
+      let n = IO.read t.pack.block ~off buf in
       assert (n = K.hash_size);
       let _, v =
-        Irmin.Type.decode_bin ~headers:false K.t
-          (* the copy is important here *)
-          (Bytes.to_string buffer_for_hash)
-          0
+        Irmin.Type.decode_bin ~headers:false K.t (Bytes.unsafe_to_string buf) 0
       in
       v
 
@@ -237,7 +231,7 @@ struct
               let hash = io_read_and_decode_hash ~off t in
               if Irmin.Type.equal K.t k hash then true else loop tl
         in
-        loop (Index.find_all t.pack.index (Index.key k))
+        loop (Index.find_all t.pack.index k)
 
     let mem t k =
       Lwt_mutex.with_lock create (fun () ->
@@ -284,7 +278,7 @@ struct
                     Some v )
                   else loop tl
             in
-            loop (Index.find_all t.pack.index (Index.key k)) )
+            loop (Index.find_all t.pack.index k) )
 
     let find t k =
       Lwt_mutex.with_lock t.pack.lock (fun () ->
@@ -327,13 +321,13 @@ struct
                       let hash = io_read_and_decode_hash ~off t in
                       if Irmin.Type.equal K.t hash k then Some off else loop tl
                 in
-                loop (Index.find_all t.pack.index (Index.key k))
+                loop (Index.find_all t.pack.index k)
           in
           let dict = Dict.index t.pack.dict in
           let off = IO.offset t.pack.block in
           V.encode_bin ~offset ~dict v k (IO.append t.pack.block);
           let len = Int64.to_int (IO.offset t.pack.block -- off) in
-          Index.add t.pack.index (Index.key k) (off, len, V.magic v);
+          Index.add t.pack.index k (off, len, V.magic v);
           if Tbl.length t.staging >= auto_flush then sync t
           else (
             Tbl.add t.staging k v;

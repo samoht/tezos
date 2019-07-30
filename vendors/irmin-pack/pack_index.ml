@@ -11,11 +11,28 @@
    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. *)
 
 module type S = sig
-  include Index.S with type value = int64 * int * char
+  type t
 
-  type full_key
+  type key
 
-  val key : full_key -> key
+  type value = int64 * int * char
+
+  val v :
+    ?fresh:bool ->
+    ?readonly:bool ->
+    ?shared:bool ->
+    log_size:int ->
+    fan_out_size:int ->
+    string ->
+    t
+
+  val clear : t -> unit
+
+  val flush : t -> unit
+
+  val add : t -> key -> value -> unit
+
+  val find_all : t -> key -> value list
 end
 
 module Make (K : Irmin.Hash.S) = struct
@@ -26,18 +43,17 @@ module Make (K : Irmin.Hash.S) = struct
 
     let hash = Hashtbl.hash
 
-    let hash_size = Sys.int_size - 1
+    (* Hashtbl.hash uses 30 bits *)
+    let hash_size = 30
 
     let equal x y = String.equal x y
 
     let encode x = x
 
-    let encoded_size = K.hash_size / 2
+    let encoded_size = min 8 K.hash_size
 
     let decode s off = String.sub s off encoded_size
   end
-
-  type full_key = K.t
 
   let key s =
     let s = Irmin.Type.to_bin_string K.t s in
@@ -61,5 +77,21 @@ module Make (K : Irmin.Hash.S) = struct
     let encoded_size = (64 / 8) + (32 / 8) + 1
   end
 
-  include Index_unix.Make (Key) (Val)
+  module Index = Index_unix.Make (Key) (Val)
+
+  type t = Index.t
+
+  type key = K.t
+
+  type value = Val.t
+
+  let v = Index.v
+
+  let clear = Index.clear
+
+  let flush = Index.flush
+
+  let add t k v = Index.add t (key k) v
+
+  let find_all t k = Index.find_all t (key k)
 end
