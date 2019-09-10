@@ -135,6 +135,8 @@ let run stdin stdout =
 let main () =
   let stdin = Lwt_io.of_fd ~mode:Input Lwt_unix.stdin in
   let stdout = Lwt_io.of_fd ~mode:Output Lwt_unix.stdout in
+  let ftderr = open_out "irmin.log" in
+  Unix.dup2 (Unix.descr_of_out_channel ftderr) Unix.stderr;
   Lwt.catch
     (fun () ->
        run stdin stdout >>=? fun () ->
