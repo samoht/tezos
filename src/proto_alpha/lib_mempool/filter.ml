@@ -165,6 +165,8 @@ let pre_filter config
       true
   | Single (Ballot _) ->
       true
+  | Single (Failing_noop _) ->
+      false
   | Single (Manager_operation _) as op ->
       pre_filter_manager config op bytes
   | Cons (Manager_operation _, _) as op ->

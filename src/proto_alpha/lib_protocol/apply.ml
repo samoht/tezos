@@ -125,6 +125,8 @@ type error +=
       timestamp : Time.t;
     }
 
+type error += (* `Permanent *) Failing_noop_error
+
 let () =
   register_error_kind
     `Temporary
@@ -502,7 +504,21 @@ let () =
           None)
     (fun (required, endorsements, priority, timestamp) ->
       Not_enough_endorsements_for_priority
-        {required; endorsements; priority; timestamp})
+        {required; endorsements; priority; timestamp}) ;
+  register_error_kind
+    `Permanent
+    ~id:"operation.failing_noop"
+    ~title:"Failing_noop operation are not executed by the protocol"
+    ~description:
+      "The failing_noop operation is an operation that is not and never will \
+       be executed by the protocol."
+    ~pp:(fun ppf () ->
+      Format.fprintf
+        ppf
+        "The failing_noop operation cannot be executed by the protocol")
+    Data_encoding.empty
+    (function Failing_noop_error -> Some () | _ -> None)
+    (fun () -> Failing_noop_error)
 
 open Apply_results
 
@@ -1330,6 +1346,9 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
       >>?= fun () ->
       Amendment.record_ballot ctxt source proposal ballot
       >|=? fun ctxt -> (ctxt, Single_result Ballot_result)
+  | Single (Failing_noop _) ->
+      (* Failing_noop _ always fails *)
+      fail Failing_noop_error
   | Single (Manager_operation _) as op ->
       precheck_manager_contents_list ctxt op
       >>=? fun ctxt ->

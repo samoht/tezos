@@ -971,6 +971,8 @@ let kind_equal :
       Some Eq
   | (Ballot _, _) ->
       None
+  | (Failing_noop _, _) ->
+      None
   | ( Manager_operation {operation = Reveal _; _},
       Manager_operation_result {operation_result = Applied (Reveal_result _); _}
     ) ->
