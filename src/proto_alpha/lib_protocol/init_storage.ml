@@ -67,7 +67,25 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
         {index = voting_period_index; kind = Proposal; start_position}
       >>=? fun ctxt ->
       Storage.Vote.Pred_period_kind.init ctxt Promotion_vote
-      >>=? fun ctxt -> Storage.Sapling.Next.init ctxt
+      >>=? fun ctxt ->
+      Storage.Sapling.Next.init ctxt
+      >>=? fun ctxt ->
+      let balance_updates = [] in
+      (* Add balance updates receipts to be attached on the first block of this
+         protocol - see [[prepare]] function below *)
+      Storage.Pending_migration_balance_updates.init ctxt balance_updates
 
 let prepare ctxt ~level ~predecessor_timestamp ~timestamp ~fitness =
   Raw_context.prepare ~level ~predecessor_timestamp ~timestamp ~fitness ctxt
+  >>=? fun ctxt ->
+  Storage.Pending_migration_balance_updates.get_option ctxt
+  >>=? function
+  | Some balance_updates ->
+      Storage.Pending_migration_balance_updates.remove ctxt
+      >>= fun ctxt ->
+      (* When applying balance updates in a migration, we must attach receipts.
+         The balance updates returned from here will be applied in the first
+         block of the new protocol. *)
+      return (ctxt, balance_updates)
+  | None ->
+      return (ctxt, [])
