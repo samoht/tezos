@@ -136,7 +136,8 @@ class TestVotingFull:
     def test_delegates_vote_proto_b(self, sandbox: Sandbox):
         client = sandbox.client(0)
         for i in range(1, 5):
-            client.submit_ballot(f'bootstrap{i}', PROTO_B, 'yay')
+            client.run(['submit', 'ballot', 'for', f'bootstrap{i}', PROTO_B,
+                        'yay'])
 
     @pytest.mark.timeout(60)
     def test_wait_for_testing(self, sandbox: Sandbox):
@@ -186,7 +187,8 @@ class TestVotingFull:
     def test_vote_in_promotion_phase(self, sandbox: Sandbox):
         client = sandbox.client(0)
         for i in range(1, 5):
-            client.submit_ballot(f'bootstrap{i}', PROTO_B, 'yay')
+            client.run(['submit', 'ballot', 'for', f'bootstrap{i}', PROTO_B,
+                        'yay'])
         while client.get_level() < 4 * BLOCKS_PER_VOTING_PERIOD:
             time.sleep(POLLING_TIME)
 

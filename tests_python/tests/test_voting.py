@@ -1,13 +1,17 @@
 import shutil
-
+import random
 import pytest
 
 from client.client import Client
 from tools import constants, paths, utils
 
+random.seed(42)
+
 BAKE_ARGS = ['--minimal-fees', '0', '--minimal-nanotez-per-byte', '0',
              '--minimal-nanotez-per-gas-unit', '0', '--max-priority', '512',
              '--minimal-timestamp']
+
+VOTES_PER_ROLL = 100
 
 
 @pytest.fixture(scope="class")
@@ -206,7 +210,62 @@ class TestManualBaking:
         # next block is going to be of 'testing_vote' kind
         proto = session['protos'][1]
         for i in range(1, 4):
-            client.submit_ballot(f'bootstrap{i}', proto, 'yay')
+            yay_fraction = int(i * 0.2 * VOTES_PER_ROLL)
+            nay_fraction = int(VOTES_PER_ROLL - yay_fraction -
+                               (0.2 * VOTES_PER_ROLL))
+            pass_fraction = int(0.2 * VOTES_PER_ROLL)
+            client.submit_ballot(f'bootstrap{i}', proto,
+                                 yay_fraction, nay_fraction, pass_fraction)
+
+    def test_submit_ballot_negative_yays(self, client, session):
+        with utils.assert_run_failure('Number of yays has to be a ' +
+                                      'non-negative integer'):
+            yay_fraction = int(random.uniform(-0.4, -0.2) * VOTES_PER_ROLL)
+            nay_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
+            pass_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
+            proto = session['protos'][1]
+            client.submit_ballot('bootstrap1', proto,
+                                 yay_fraction, nay_fraction, pass_fraction)
+
+    def test_submit_ballot_negative_nays(self, client, session):
+        with utils.assert_run_failure('Number of nays has to be a ' +
+                                      'non-negative integer'):
+            yay_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
+            nay_fraction = int(random.uniform(-0.4, -0.2) * VOTES_PER_ROLL)
+            pass_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
+            proto = session['protos'][1]
+            client.submit_ballot('bootstrap1', proto,
+                                 yay_fraction, nay_fraction, pass_fraction)
+
+    def test_submit_ballot_negative_passes(self, client, session):
+        with utils.assert_run_failure('Number of passes has to be a ' +
+                                      'non-negative integer'):
+            yay_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
+            nay_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
+            pass_fraction = int(random.uniform(-0.4, -0.2) * VOTES_PER_ROLL)
+            proto = session['protos'][1]
+            client.submit_ballot('bootstrap1', proto,
+                                 yay_fraction, nay_fraction, pass_fraction)
+
+    def test_submit_ballot_bigger_votes_per_roll(self, client, session):
+        with utils.assert_run_failure('Total number of yays/nays/passes ' +
+                                      f'differs from {VOTES_PER_ROLL}'):
+            yay_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
+            nay_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
+            pass_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
+            proto = session['protos'][1]
+            client.submit_ballot('bootstrap1', proto,
+                                 yay_fraction, nay_fraction, pass_fraction)
+
+    def test_submit_ballot_smaller_votes_per_roll(self, client, session):
+        with utils.assert_run_failure('Total number of yays/nays/passes ' +
+                                      f'differs from {VOTES_PER_ROLL}'):
+            yay_fraction = int(random.uniform(0.1, 0.3) * VOTES_PER_ROLL)
+            nay_fraction = int(random.uniform(0.1, 0.3) * VOTES_PER_ROLL)
+            pass_fraction = int(random.uniform(0.1, 0.3) * VOTES_PER_ROLL)
+            proto = session['protos'][1]
+            client.submit_ballot('bootstrap1', proto,
+                                 yay_fraction, nay_fraction, pass_fraction)
 
     def test_bake_until_prev_last_block_of_voting_period2(self,
                                                           client: Client):
@@ -223,7 +282,7 @@ class TestManualBaking:
 
     def test_submit_failing_ballot(self, client: Client, session: dict):
         proto = session['protos'][1]
-        client.submit_ballot(f'bootstrap{4}', proto, 'nay')
+        client.submit_ballot(f'bootstrap{4}', proto, 0, 100, 0)
 
     def test_level_info_period_offset2(self, client: Client):
         level = client.get_current_level(offset=-1)
