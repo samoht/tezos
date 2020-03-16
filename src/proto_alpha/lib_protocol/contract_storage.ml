@@ -635,31 +635,75 @@ let increment_counter c manager =
   >>=? fun contract_counter ->
   Storage.Contract.Counter.set c contract (Z.succ contract_counter)
 
-let get_script_code c contract = Storage.Contract.Code.get_option c contract
+let get_script_code_cached = Raw_context.get_cached_code
+
+let init_set_script_code_cached = Raw_context.init_set_cached_code
+
+let clear_script_code_cached = Raw_context.clear_cached_code
+
+let get_script_code ctxt contract =
+  match get_script_code_cached ctxt contract with
+  | Some code ->
+      return (ctxt, Some (Script_repr.lazy_expr code))
+  | None ->
+      Storage.Contract.Code.get_option ctxt contract
+
+let get_script_cached c contract =
+  let code = Raw_context.get_cached_code c contract in
+  let storage = Raw_context.get_cached_storage c contract in
+  match (code, storage) with
+  | (Some code, Some storage) ->
+      (* no gas fee when using force_decode,
+         since the lazy_expr will have state set to `Value` *)
+      {
+        Script_repr.code = Script_repr.lazy_expr code;
+        storage = Script_repr.lazy_expr storage;
+      }
+      |> return_some
+  | (None, None) ->
+      return_none
+  | _ ->
+      failwith "get_script_cached: caches are out of sync"
 
 let get_script c contract =
-  Storage.Contract.Code.get_option c contract
-  >>=? fun (c, code) ->
-  Storage.Contract.Storage.get_option c contract
-  >>=? fun (c, storage) ->
-  match (code, storage) with
-  | (None, None) ->
-      return (c, None)
-  | (Some code, Some storage) ->
-      return (c, Some {Script_repr.code; storage})
-  | (None, Some _) | (Some _, None) ->
-      failwith "get_script"
+  get_script_cached c contract
+  >>=? function
+  | Some script ->
+      return (c, Some script)
+  | None -> (
+      Storage.Contract.Code.get_option c contract
+      >>=? fun (c, code) ->
+      Storage.Contract.Storage.get_option c contract
+      >>=? fun (c, storage) ->
+      match (code, storage) with
+      | (None, None) ->
+          return (c, None)
+      | (Some code, Some storage) ->
+          return (c, Some {Script_repr.code; storage})
+      | (None, Some _) | (Some _, None) ->
+          failwith "get_script" )
+
+let get_storage_cached = Raw_context.get_cached_storage
+
+let init_set_storage_cached = Raw_context.init_set_cached_storage
+
+let clear_storage_cached = Raw_context.clear_cached_storage
 
 let get_storage ctxt contract =
-  Storage.Contract.Storage.get_option ctxt contract
-  >>=? function
-  | (ctxt, None) ->
-      return (ctxt, None)
-  | (ctxt, Some storage) ->
-      Lwt.return (Script_repr.force_decode storage)
-      >>=? fun (storage, cost) ->
-      Lwt.return (Raw_context.consume_gas ctxt cost)
-      >>=? fun ctxt -> return (ctxt, Some storage)
+  match get_storage_cached ctxt contract with
+  | Some storage ->
+      return (ctxt, Some storage)
+  | None -> (
+      Storage.Contract.Storage.get_option ctxt contract
+      >>=? function
+      | (ctxt, None) ->
+          return (ctxt, None)
+      | (ctxt, Some storage) ->
+          Lwt.return
+            ( Script_repr.force_decode storage
+            >>? fun (storage, cost) ->
+            Raw_context.consume_gas ctxt cost
+            >|? fun ctxt -> (ctxt, Some storage) ) )
 
 let get_counter c manager =
   let contract = Contract_repr.implicit_contract manager in
@@ -730,10 +774,10 @@ let get_balance_carbonated c contract =
   >>?= fun c -> get_balance c contract >>=? fun balance -> return (c, balance)
 
 let update_script_storage c contract storage lazy_storage_diff =
-  let storage = Script_repr.lazy_expr storage in
+  let storage_lexpr = Script_repr.lazy_expr storage in
   update_script_lazy_storage c lazy_storage_diff
   >>=? fun (c, lazy_storage_size_diff) ->
-  Storage.Contract.Storage.set c contract storage
+  Storage.Contract.Storage.set c contract storage_lexpr
   >>=? fun (c, size_diff) ->
   Storage.Contract.Used_storage_space.get c contract
   >>=? fun previous_size ->
@@ -741,6 +785,7 @@ let update_script_storage c contract storage lazy_storage_diff =
     Z.add previous_size (Z.add lazy_storage_size_diff (Z.of_int size_diff))
   in
   Storage.Contract.Used_storage_space.set c contract new_size
+  >>=? fun c -> init_set_storage_cached c contract storage |> return
 
 let spend c contract amount =
   Storage.Contract.Balance.get c contract

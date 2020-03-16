@@ -643,7 +643,7 @@ let apply_manager_operation_content :
             ~parameter
             ~entrypoint
             ~internal
-          >>=? fun {ctxt; storage; lazy_storage_diff; operations} ->
+          >>=? fun {ctxt; code; storage; lazy_storage_diff; operations} ->
           Contract.update_script_storage
             ctxt
             destination
@@ -652,6 +652,8 @@ let apply_manager_operation_content :
           >>=? fun ctxt ->
           Fees.record_paid_storage_space ctxt destination
           >>=? fun (ctxt, new_size, paid_storage_size_diff, fees) ->
+          Contract.init_set_script_code_cached ctxt destination code
+          |> fun ctxt ->
           Contract.originated_from_current_nonce
             ~since:before_operation
             ~until:ctxt
@@ -866,6 +868,9 @@ let apply_manager_contents (type kind) ctxt mode chain_id
   let ctxt = Gas.set_limit ctxt gas_limit in
   let ctxt = Fees.start_counting_storage_fees ctxt in
   let source = Contract.implicit_contract source in
+  Contract.clear_script_code_cached ctxt
+  |> Contract.clear_storage_cached
+  |> fun ctxt ->
   apply_manager_operation_content
     ctxt
     mode

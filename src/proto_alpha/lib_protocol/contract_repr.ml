@@ -27,7 +27,7 @@ type t =
   | Implicit of Signature.Public_key_hash.t
   | Originated of Contract_hash.t
 
-include Compare.Make (struct
+module Comparable = struct
   type nonrec t = t
 
   let compare l1 l2 =
@@ -40,9 +40,13 @@ include Compare.Make (struct
         -1
     | (Originated _, Implicit _) ->
         1
-end)
+end
+
+include Compare.Make (Comparable)
 
 type contract = t
+
+module Map = Map.Make (Comparable)
 
 type error += Invalid_contract_notation of string (* `Permanent *)
 

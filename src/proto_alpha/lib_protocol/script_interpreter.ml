@@ -1477,6 +1477,7 @@ let interp :
 let execute logger ctxt mode step_constants ~entrypoint ~internal
     unparsed_script arg :
     ( Script.expr
+    * Script.expr
     * packed_internal_operation list
     * context
     * Lazy_storage.diffs option )
@@ -1530,10 +1531,11 @@ let execute logger ctxt mode step_constants ~entrypoint ~internal
     | diff ->
         Some diff
   in
-  (storage, ops, ctxt, lazy_storage_diff)
+  (script_code, storage, ops, ctxt, lazy_storage_diff)
 
 type execution_result = {
   ctxt : context;
+  code : Script.expr;
   storage : Script.expr;
   lazy_storage_diff : Lazy_storage.diffs option;
   operations : packed_internal_operation list;
@@ -1550,5 +1552,5 @@ let execute ?(logger = (module No_trace : STEP_LOGGER)) ctxt mode
     ~internal
     script
     (Micheline.root parameter)
-  >|=? fun (storage, operations, ctxt, lazy_storage_diff) ->
-  {ctxt; storage; lazy_storage_diff; operations}
+  >|=? fun (code, storage, operations, ctxt, lazy_storage_diff) ->
+  {ctxt; code; storage; lazy_storage_diff; operations}

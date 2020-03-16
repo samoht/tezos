@@ -45,6 +45,7 @@ type error += Michelson_too_many_recursive_calls
 
 type execution_result = {
   ctxt : context;
+  code : Script.expr;
   storage : Script.expr;
   lazy_storage_diff : Lazy_storage.diffs option;
   operations : packed_internal_operation list;
