@@ -3,6 +3,7 @@
 (* Open Source License                                                       *)
 (* Copyright (c) 2018 Dynamic Ledger Solutions, Inc. <contact@tezos.com>     *)
 (* Copyright (c) 2019-2020 Nomadic Labs <contact@nomadic-labs.com>           *)
+(* Copyright (c) 2020 Metastate AG <hello@metastate.dev>                     *)
 (*                                                                           *)
 (* Permission is hereby granted, free of charge, to any person obtaining a   *)
 (* copy of this software and associated documentation files (the "Software"),*)
@@ -903,6 +904,8 @@ module Contract : sig
   val clear_storage_cached : context -> context
 
   val get_counter : context -> public_key_hash -> Z.t tzresult Lwt.t
+
+  val get_global_counter : context -> Z.t tzresult Lwt.t
 
   val get_balance : context -> contract -> Tez.t tzresult Lwt.t
 

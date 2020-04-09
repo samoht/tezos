@@ -3,6 +3,7 @@
 (* Open Source License                                                       *)
 (* Copyright (c) 2018 Dynamic Ledger Solutions, Inc. <contact@tezos.com>     *)
 (* Copyright (c) 2019-2020 Nomadic Labs <contact@nomadic-labs.com>           *)
+(* Copyright (c) 2020 Metastate AG <hello@metastate.dev>                     *)
 (*                                                                           *)
 (* Permission is hereby granted, free of charge, to any person obtaining a   *)
 (* copy of this software and associated documentation files (the "Software"),*)
@@ -101,6 +102,25 @@ module Nonce = struct
     RPC_context.make_call1 S.get ctxt block level () ()
 end
 
+module Global_counter = struct
+  module S = struct
+    let global_counter =
+      RPC_service.get_service
+        ~description:"Access the global counter."
+        ~query:RPC_query.empty
+        ~output:Data_encoding.z
+        RPC_path.(custom_root / "context" / "global_counter")
+  end
+
+  let register () =
+    let open Services_registration in
+    register0 S.global_counter (fun ctxt () () ->
+        Contract.get_global_counter ctxt)
+
+  let global_counter ctxt block =
+    RPC_context.make_call0 S.global_counter ctxt block ()
+end
+
 module Contract = Contract_services
 module Constants = Constants_services
 module Delegate = Delegate_services
@@ -117,4 +137,5 @@ let register () =
   Helpers.register () ;
   Nonce.register () ;
   Voting.register () ;
-  Sapling.register ()
+  Sapling.register () ;
+  Global_counter.register ()

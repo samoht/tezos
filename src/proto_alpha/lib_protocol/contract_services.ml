@@ -3,6 +3,7 @@
 (* Open Source License                                                       *)
 (* Copyright (c) 2018 Dynamic Ledger Solutions, Inc. <contact@tezos.com>     *)
 (* Copyright (c) 2019-2020 Nomadic Labs <contact@nomadic-labs.com>           *)
+(* Copyright (c) 2020 Metastate AG <hello@metastate.dev>                     *)
 (*                                                                           *)
 (* Permission is hereby granted, free of charge, to any person obtaining a   *)
 (* copy of this software and associated documentation files (the "Software"),*)
@@ -376,9 +377,13 @@ let register () =
       Delegate.get ctxt contract
       >>=? fun delegate ->
       ( match Contract.is_implicit contract with
-      | Some manager ->
-          Contract.get_counter ctxt manager
-          >>=? fun counter -> return_some counter
+      | Some manager -> (
+          Contract.allocated ctxt contract
+          >>=? function
+          | false ->
+              return_none
+          | true ->
+              Contract.get_counter ctxt manager >|=? Option.some )
       | None ->
           return_none )
       >>=? fun counter ->
