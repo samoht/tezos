@@ -2,6 +2,7 @@
 (*                                                                           *)
 (* Open Source License                                                       *)
 (* Copyright (c) 2018 Dynamic Ledger Solutions, Inc. <contact@tezos.com>     *)
+(* Copyright (c) 2020 Metastate AG <hello@metastate.dev>                     *)
 (*                                                                           *)
 (* Permission is hereby granted, free of charge, to any person obtaining a   *)
 (* copy of this software and associated documentation files (the "Software"),*)
@@ -295,9 +296,9 @@ let transaction ?counter ?fee ?gas_limit ?storage_limit
   Context.Contract.manager ctxt src
   >|=? fun account -> sign account.sk ctxt sop
 
-let delegation ?fee ctxt source dst =
+let delegation ?counter ?fee ctxt source dst =
   let top = Delegation dst in
-  manager_operation ?fee ~source ctxt top
+  manager_operation ?counter ?fee ~source ctxt top
   >>=? fun sop ->
   Context.Contract.manager ctxt source
   >|=? fun account -> sign account.sk ctxt sop
