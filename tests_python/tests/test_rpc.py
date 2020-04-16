@@ -519,6 +519,11 @@ class TestRPCsExistence:
                               f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
                               'context/raw/bytes')
 
+    def test_chain_block_context_global_counter(self, sandbox: Sandbox):
+        sandbox.client(1).rpc('get',
+                              f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
+                              'context/global_counter')
+
     def test_chain_block_hash(self, sandbox: Sandbox):
         sandbox.client(1).rpc('get',
                               f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/hash')
