@@ -1,8 +1,8 @@
 """Structured representation of client output."""
 import json
 import re
-from enum import auto, Enum, unique
-from typing import List, Dict
+from enum import Enum, auto, unique
+from typing import Dict, List
 
 # TODO This is incomplete. Add additional attributes and result classes as
 #      they are needed
@@ -495,3 +495,14 @@ class CheckSignMessageResult:
         if match is None:
             raise InvalidClientOutput(client_output)
         self.check = True
+
+
+class FindBakerWithConsensusKeyResult:
+    """Result of a 'find baker with consensus key' command."""
+
+    def __init__(self, client_output: str):
+        pattern = r"Found baker:\ (\w*)"
+        match = re.search(pattern, client_output)
+        if match is None:
+            raise InvalidClientOutput(client_output)
+        self.baker = match.groups()[0]
