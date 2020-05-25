@@ -402,6 +402,7 @@ module Script : sig
     | T_bls12_381_g2
     | T_bls12_381_fr
     | T_ticket
+    | T_baker_hash
 
   type location = Micheline.canonical_location
 

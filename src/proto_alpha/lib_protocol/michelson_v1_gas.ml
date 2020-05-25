@@ -78,6 +78,8 @@ module Cost_of = struct
         Z.of_int (Signature.Public_key.size k)
     | (Timestamp_key _, _) ->
         Z.of_int (timestamp_bytes v)
+    | (Baker_hash_key _, _) ->
+        Z.of_int Baker_hash.size
     | (Address_key _, _) ->
         Z.of_int Signature.Public_key_hash.size
     | (Mutez_key _, _) ->
@@ -566,6 +568,9 @@ module Cost_of = struct
     (* model B58CHECK_DECODING_PUBLIC_KEY_HASH_secp256k1 *)
     let cost_B58CHECK_DECODING_PUBLIC_KEY_HASH_secp256k1 = Z.of_int 3_300
 
+    (* model B58CHECK_DECODING_BAKER_HASH *)
+    let cost_B58CHECK_DECODING_BAKER_HASH = (* TODO how much *) Z.of_int 3_300
+
     (* model B58CHECK_DECODING_PUBLIC_KEY_ed25519 *)
     let cost_B58CHECK_DECODING_PUBLIC_KEY_ed25519 = Z.of_int 4_300
 
@@ -608,6 +613,9 @@ module Cost_of = struct
     (* model B58CHECK_ENCODING_PUBLIC_KEY_HASH_secp256k1 *)
     let cost_B58CHECK_ENCODING_PUBLIC_KEY_HASH_secp256k1 = Z.of_int 3_300
 
+    (* model B58CHECK_ENCODING_BAKER_HASH *)
+    let cost_B58CHECK_ENCODING_BAKER_HASH = (* TODO how much? *) Z.of_int 3_300
+
     (* model B58CHECK_ENCODING_PUBLIC_KEY_ed25519 *)
     let cost_B58CHECK_ENCODING_PUBLIC_KEY_ed25519 = Z.of_int 4_500
 
@@ -638,6 +646,9 @@ module Cost_of = struct
     (* model DECODING_PUBLIC_KEY_HASH_secp256k1 *)
     let cost_DECODING_PUBLIC_KEY_HASH_secp256k1 = Z.of_int 60
 
+    (* model DECODING_BAKER_HASH *)
+    let cost_DECODING_BAKER_HASH = (* TODO how much? *) Z.of_int 50
+
     (* model DECODING_PUBLIC_KEY_ed25519 *)
     let cost_DECODING_PUBLIC_KEY_ed25519 = Z.of_int 60
 
@@ -667,6 +678,9 @@ module Cost_of = struct
 
     (* model ENCODING_PUBLIC_KEY_HASH_secp256k1 *)
     let cost_ENCODING_PUBLIC_KEY_HASH_secp256k1 = Z.of_int 70
+
+    (* model ENCODING_BAKER_HASH *)
+    let cost_ENCODING_BAKER_HASH = (* TODO how much? *) Z.of_int 70
 
     (* model ENCODING_PUBLIC_KEY_ed25519 *)
     let cost_ENCODING_PUBLIC_KEY_ed25519 = Z.of_int 80
@@ -1046,6 +1060,8 @@ module Cost_of = struct
 
     let compare_key = atomic_step_cost (Z.of_int 92)
 
+    let compare_baker_hash = atomic_step_cost (Z.of_int 92)
+
     let compare_timestamp t1 t2 =
       atomic_step_cost
         (cost_N_Compare_timestamp
@@ -1084,6 +1100,8 @@ module Cost_of = struct
           compare_key_hash
       | Key_key _ ->
           compare_key
+      | Baker_hash_key _ ->
+          compare_baker_hash
       | Timestamp_key _ ->
           compare_timestamp x y
       | Address_key _ ->
@@ -1282,6 +1300,11 @@ module Cost_of = struct
                 cost_B58CHECK_DECODING_PUBLIC_KEY_HASH_secp256k1
                 cost_B58CHECK_DECODING_PUBLIC_KEY_HASH_p256))
 
+    let baker_hash_optimized = atomic_step_cost cost_DECODING_BAKER_HASH
+
+    let baker_hash_readable =
+      atomic_step_cost cost_B58CHECK_DECODING_BAKER_HASH
+
     let signature_optimized =
       atomic_step_cost
       @@ Compare.Z.(
@@ -1394,6 +1417,11 @@ module Cost_of = struct
              (max
                 cost_B58CHECK_ENCODING_PUBLIC_KEY_HASH_secp256k1
                 cost_B58CHECK_ENCODING_PUBLIC_KEY_HASH_p256))
+
+    let baker_hash_optimized = atomic_step_cost cost_ENCODING_BAKER_HASH
+
+    let baker_hash_readable =
+      atomic_step_cost cost_B58CHECK_ENCODING_BAKER_HASH
 
     let signature_optimized =
       atomic_step_cost
