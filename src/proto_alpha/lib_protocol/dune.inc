@@ -64,6 +64,7 @@ module CamlinternalFormatBasics = struct include CamlinternalFormatBasics end
    nonce_storage.mli nonce_storage.ml
    seed_storage.mli seed_storage.ml
    roll_storage.mli roll_storage.ml
+   baker_storage.mli baker_storage.ml
    delegate_storage.mli delegate_storage.ml
    sapling_storage.ml
    lazy_storage_diff.mli lazy_storage_diff.ml
@@ -151,6 +152,7 @@ module CamlinternalFormatBasics = struct include CamlinternalFormatBasics end
    nonce_storage.mli nonce_storage.ml
    seed_storage.mli seed_storage.ml
    roll_storage.mli roll_storage.ml
+   baker_storage.mli baker_storage.ml
    delegate_storage.mli delegate_storage.ml
    sapling_storage.ml
    lazy_storage_diff.mli lazy_storage_diff.ml
@@ -238,6 +240,7 @@ module CamlinternalFormatBasics = struct include CamlinternalFormatBasics end
    nonce_storage.mli nonce_storage.ml
    seed_storage.mli seed_storage.ml
    roll_storage.mli roll_storage.ml
+   baker_storage.mli baker_storage.ml
    delegate_storage.mli delegate_storage.ml
    sapling_storage.ml
    lazy_storage_diff.mli lazy_storage_diff.ml
@@ -345,6 +348,7 @@ include Tezos_raw_protocol_alpha.Main
    Nonce_storage
    Seed_storage
    Roll_storage
+   Baker_storage
    Delegate_storage
    Sapling_storage
    Lazy_storage_diff
@@ -468,6 +472,7 @@ include Tezos_raw_protocol_alpha.Main
    nonce_storage.mli nonce_storage.ml
    seed_storage.mli seed_storage.ml
    roll_storage.mli roll_storage.ml
+   baker_storage.mli baker_storage.ml
    delegate_storage.mli delegate_storage.ml
    sapling_storage.ml
    lazy_storage_diff.mli lazy_storage_diff.ml
