@@ -46,6 +46,7 @@ module CamlinternalFormatBasics = struct include CamlinternalFormatBasics end
    contract_repr.mli contract_repr.ml
    roll_repr.mli roll_repr.ml
    vote_repr.mli vote_repr.ml
+   baker_script_repr.mli baker_script_repr.ml
    block_header_repr.mli block_header_repr.ml
    operation_repr.mli operation_repr.ml
    manager_repr.mli manager_repr.ml
@@ -134,6 +135,7 @@ module CamlinternalFormatBasics = struct include CamlinternalFormatBasics end
    contract_repr.mli contract_repr.ml
    roll_repr.mli roll_repr.ml
    vote_repr.mli vote_repr.ml
+   baker_script_repr.mli baker_script_repr.ml
    block_header_repr.mli block_header_repr.ml
    operation_repr.mli operation_repr.ml
    manager_repr.mli manager_repr.ml
@@ -222,6 +224,7 @@ module CamlinternalFormatBasics = struct include CamlinternalFormatBasics end
    contract_repr.mli contract_repr.ml
    roll_repr.mli roll_repr.ml
    vote_repr.mli vote_repr.ml
+   baker_script_repr.mli baker_script_repr.ml
    block_header_repr.mli block_header_repr.ml
    operation_repr.mli operation_repr.ml
    manager_repr.mli manager_repr.ml
@@ -330,6 +333,7 @@ include Tezos_raw_protocol_alpha.Main
    Contract_repr
    Roll_repr
    Vote_repr
+   Baker_script_repr
    Block_header_repr
    Operation_repr
    Manager_repr
@@ -454,6 +458,7 @@ include Tezos_raw_protocol_alpha.Main
    contract_repr.mli contract_repr.ml
    roll_repr.mli roll_repr.ml
    vote_repr.mli vote_repr.ml
+   baker_script_repr.mli baker_script_repr.ml
    block_header_repr.mli block_header_repr.ml
    operation_repr.mli operation_repr.ml
    manager_repr.mli manager_repr.ml
