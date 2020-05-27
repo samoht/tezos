@@ -101,6 +101,8 @@ module Cost_of = struct
 
   let manager_operation = step_cost @@ Z.of_int 1_000
 
+  let baker_operation = (* TODO how much *) step_cost @@ Z.of_int 1_000
+
   (* FIXME: hardcoded constant, available in next environment version.
      Set to a reasonable upper bound. *)
   let public_key_size = 64
