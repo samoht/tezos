@@ -25,6 +25,8 @@
 (*                                                                           *)
 (*****************************************************************************)
 
+open Logging
+
 (* Invoice a contract at given address with a given amount. Returns updated
    context and a  balance update receipt (singleton list). The address must be
    a valid base58 hash and its contract must be allocated, otherwise this is
@@ -54,13 +56,22 @@ let migrate_baker :
     Signature.Public_key_hash.t ->
     Raw_context.t tzresult Lwt.t =
  fun ctxt baker_pkh ->
+  lwt_log_notice
+    "\nMigrating baker %a..."
+    Signature.Public_key_hash.pp
+    baker_pkh
+  >>= fun () ->
   Contract_storage.get_public_key
     ctxt
     (Contract_repr.implicit_contract baker_pkh)
   >>=? fun pk ->
+  lwt_log_notice "pk %a" Signature.Public_key.pp pk
+  >>= fun () ->
   let storage = Baker_script_repr.storage ~threshold:1 ~owner_keys:[pk] in
   Baker_storage.fresh_baker_from_current_nonce ctxt
   >>=? fun (ctxt, baker_hash) ->
+  lwt_log_notice "baker_hash %a" Baker_hash.pp baker_hash
+  >>= fun () ->
   let from = baker_pkh in
   let to_ = baker_hash in
   let from_contract = Contract_repr.implicit_contract from in
@@ -91,6 +102,8 @@ let migrate_baker :
   (* Migrate storages with original baker pkh as a key *)
   Storage.Contract.Balance.get ctxt from_contract
   >>=? fun balance ->
+  lwt_log_notice "moving balance %a" Tez_repr.pp balance
+  >>= fun () ->
   Storage.Contract.Balance.init ctxt to_contract balance
   >>=? fun ctxt ->
   Storage.Contract.Balance.remove ctxt from_contract
@@ -99,8 +112,10 @@ let migrate_baker :
   Storage.Roll.Delegate_roll_list_006.get_option ctxt from
   >>=? (function
          | None ->
-             return ctxt
+             lwt_log_notice "no rolls in the list" >>= fun () -> return ctxt
          | Some roll ->
+             lwt_log_notice "head roll %ld" (Roll_repr.to_int32 roll)
+             >>= fun () ->
              Storage.Roll.Delegate_roll_list_006.delete ctxt from
              >>=? fun ctxt -> Storage.Roll.Baker_roll_list.init ctxt to_ roll)
   >>=? fun ctxt ->
@@ -108,8 +123,10 @@ let migrate_baker :
   Storage.Roll.Delegate_change_006.get_option ctxt from
   >>=? (function
          | None ->
-             return ctxt
+             lwt_log_notice "no change" >>= fun () -> return ctxt
          | Some change ->
+             lwt_log_notice "change %a" Tez_repr.pp change
+             >>= fun () ->
              Storage.Roll.Delegate_change_006.delete ctxt from
              >>=? fun ctxt -> Storage.Roll.Baker_change.init ctxt to_ change)
   >>=? fun ctxt ->
@@ -143,6 +160,13 @@ let migrate_baker :
     ~f:(fun cycle deposit acc ->
       Lwt.return acc
       >>=? fun ctxt ->
+      lwt_log_notice
+        "moving frozen deposits %a for cycle %a"
+        Tez_repr.pp
+        deposit
+        Cycle_repr.pp
+        cycle
+      >>= fun () ->
       Storage.Baker.Frozen_deposits.init (ctxt, to_) cycle deposit)
   >>=? fun ctxt ->
   Storage.Contract.Frozen_deposits_006.clear (ctxt, from_contract)
@@ -153,7 +177,14 @@ let migrate_baker :
     ~init:(ok ctxt)
     ~f:(fun cycle fee acc ->
       Lwt.return acc
-      >>=? fun ctxt -> Storage.Baker.Frozen_fees.init (ctxt, to_) cycle fee)
+      >>=? fun ctxt ->
+      lwt_log_notice
+        " moving frozen fees %a for cycle %a"
+        Tez_repr.pp
+        fee
+        Cycle_repr.pp
+        cycle
+      >>= fun () -> Storage.Baker.Frozen_fees.init (ctxt, to_) cycle fee)
   >>=? fun ctxt ->
   Storage.Contract.Frozen_fees_006.clear (ctxt, from_contract)
   >>= fun ctxt ->
@@ -164,7 +195,13 @@ let migrate_baker :
     ~f:(fun cycle rewards acc ->
       Lwt.return acc
       >>=? fun ctxt ->
-      Storage.Baker.Frozen_rewards.init (ctxt, to_) cycle rewards)
+      lwt_log_notice
+        "moving frozen rewards %a for cycle %a"
+        Tez_repr.pp
+        rewards
+        Cycle_repr.pp
+        cycle
+      >>= fun () -> Storage.Baker.Frozen_rewards.init (ctxt, to_) cycle rewards)
   >>=? fun ctxt ->
   Storage.Contract.Frozen_rewards_006.clear (ctxt, from_contract)
   >>= fun ctxt -> return ctxt
@@ -234,6 +271,11 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
       >>= fun ctxt ->
       (* Take a snapshot of the consensus keys *)
       let current_cycle = Raw_context.(current_level ctxt).cycle in
+      lwt_log_notice
+        "snapshot consensus keys in cycle %a"
+        Cycle_repr.pp
+        current_cycle
+      >>= fun () ->
       Storage.Baker.Consensus_key.snapshot ctxt current_cycle
       >>=? fun ctxt ->
       (* Migrate storages with references to original baker pkhs *)
@@ -244,6 +286,13 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
         ~f:(fun contract pkh acc ->
           Lwt.return acc
           >>=? fun ctxt ->
+          lwt_log_notice
+            "moving contract %a - delegate %a"
+            Contract_repr.pp
+            contract
+            Signature.Public_key_hash.pp
+            pkh
+          >>= fun () ->
           Storage.Baker.Consensus_key_rev.get_option ctxt pkh
           >>=? function
           | None ->
@@ -255,11 +304,25 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
                   - KT19MYkajshb4DnpDyNC37Qm7DCbPh5GP5Sg
                  We drop the delegations here.
               *)
-              Storage.Contract.Delegate_006.delete ctxt contract
+              lwt_log_notice
+                "%a is not a registered baker, the delegation to it from %a \
+                 will be removed"
+                Signature.Public_key_hash.pp
+                pkh
+                Contract_repr.pp
+                contract
+              >>= fun () -> Storage.Contract.Delegate_006.delete ctxt contract
           | Some baker_hash -> (
               let migrate_delegate ctxt =
                 (* Because the path has not changed, this will override 006
                    value *)
+                lwt_log_notice
+                  "moved %a delegation target to %a"
+                  Contract_repr.pp
+                  contract
+                  Baker_hash.pp
+                  baker_hash
+                >>= fun () ->
                 Storage.Contract.Delegate.set ctxt contract baker_hash
               in
               match Contract_repr.is_implicit contract with
@@ -272,6 +335,14 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
                   | Some _ ->
                       (* Baker contracts are no longer self-delegated, so we
                          don't migrate this relation, instead we delete it *)
+                      lwt_log_notice
+                        "removing self-delegation from 006 baker %a, migrated \
+                         to %a"
+                        Contract_repr.pp
+                        contract
+                        Baker_hash.pp
+                        baker_hash
+                      >>= fun () ->
                       Storage.Contract.Delegate_006.delete ctxt contract )
               | None ->
                   migrate_delegate ctxt ))
@@ -294,6 +365,11 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
       let preserved = Constants_storage.preserved_cycles ctxt in
       (* Delegates_with_frozen_balance -> Baker.With_frozen_balance *)
       let rec migrate_frozen_balance ctxt cycle =
+        lwt_log_notice
+          "migrating bakers with frozen balance for cycle %a"
+          Cycle_repr.pp
+          cycle
+        >>= fun () ->
         Storage.Delegates_with_frozen_balance_006.fold
           (ctxt, cycle)
           ~init:(ok ctxt)
@@ -371,6 +447,8 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
           Lwt.return acc
           >>=? fun ctxt ->
           let pkh = Signature.Public_key.hash pk in
+          lwt_log_notice "migrating roll %ld owner" (Roll_repr.to_int32 roll)
+          >>= fun () ->
           Storage.Baker.Consensus_key_rev.get ctxt pkh
           >>=? fun baker ->
           (* because the path has not changed, this will override 006 value *)
@@ -383,6 +461,12 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
           Lwt.return acc
           >>=? fun ctxt ->
           let pkh = Signature.Public_key.hash pk in
+          lwt_log_notice
+            "migrating roll %ld owner snapshot for cycle %a"
+            (Roll_repr.to_int32 (snd key))
+            Cycle_repr.pp
+            (fst (fst key))
+          >>= fun () ->
           Storage.Baker.Consensus_key_rev.get ctxt pkh
           >>=? fun baker ->
           (* because the path has not changed, this will override 006 value *)
@@ -449,6 +533,11 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
             >>=? fun ctxt ->
             ( match nonce with
             | Unrevealed {nonce_hash; delegate; rewards; fees} ->
+                lwt_log_notice
+                  "migrating unrevealed nonce %a"
+                  Nonce_hash.pp
+                  nonce_hash
+                >>= fun () ->
                 Storage.Baker.Consensus_key_rev.get ctxt delegate
                 >>=? fun baker ->
                 return
