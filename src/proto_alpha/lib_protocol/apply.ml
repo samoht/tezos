@@ -1349,9 +1349,11 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
               (Activate_account_result [(Contract contract, Credited amount)])
           ) )
   | Single (Proposals {source; period; proposals}) ->
-      Roll.delegate_pubkey ctxt source
-      >>=? fun delegate ->
-      Operation.check_signature delegate chain_id operation
+      map_delegate ctxt source
+      >>=? fun baker ->
+      Baker.get_consensus_key ctxt baker
+      >>=? fun key ->
+      Operation.check_signature key chain_id operation
       >>?= fun () ->
       Voting_period.get_current ctxt
       >>=? fun {index = current_period; _} ->
@@ -1359,12 +1361,14 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
         Compare.Int32.(current_period = period)
         (Wrong_voting_period (current_period, period))
       >>?= fun () ->
-      Amendment.record_proposals ctxt source proposals
+      Amendment.record_proposals ctxt baker proposals
       >|=? fun ctxt -> (ctxt, Single_result Proposals_result)
   | Single (Ballot {source; period; proposal; ballot}) ->
-      Roll.delegate_pubkey ctxt source
-      >>=? fun delegate ->
-      Operation.check_signature delegate chain_id operation
+      map_delegate ctxt source
+      >>=? fun baker ->
+      Baker.get_consensus_key ctxt baker
+      >>=? fun key ->
+      Operation.check_signature key chain_id operation
       >>?= fun () ->
       Voting_period.get_current ctxt
       >>=? fun {index = current_period; _} ->
@@ -1372,7 +1376,7 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
         Compare.Int32.(current_period = period)
         (Wrong_voting_period (current_period, period))
       >>?= fun () ->
-      Amendment.record_ballot ctxt source proposal ballot
+      Amendment.record_ballot ctxt baker proposal ballot
       >|=? fun ctxt -> (ctxt, Single_result Ballot_result)
   | Single (Failing_noop _) ->
       (* Failing_noop _ always fails *)
