@@ -66,20 +66,18 @@ val must_be_allocated : Raw_context.t -> Contract_repr.t -> unit tzresult Lwt.t
 val list : Raw_context.t -> Contract_repr.t list Lwt.t
 
 val check_counter_increment :
-  Raw_context.t -> Signature.Public_key_hash.t -> Z.t -> unit tzresult Lwt.t
+  Raw_context.t -> Contract_repr.t -> Z.t -> unit tzresult Lwt.t
 
 val increment_counter :
-  Raw_context.t -> Signature.Public_key_hash.t -> Raw_context.t tzresult Lwt.t
+  Raw_context.t -> Contract_repr.t -> Raw_context.t tzresult Lwt.t
 
-val get_manager_key :
-  Raw_context.t ->
-  Signature.Public_key_hash.t ->
-  Signature.Public_key.t tzresult Lwt.t
+val get_public_key :
+  Raw_context.t -> Contract_repr.t -> Signature.Public_key.t tzresult Lwt.t
 
-val is_manager_key_revealed :
-  Raw_context.t -> Signature.Public_key_hash.t -> bool tzresult Lwt.t
+val is_public_key_revealed :
+  Raw_context.t -> Contract_repr.t -> bool tzresult Lwt.t
 
-val reveal_manager_key :
+val reveal_public_key :
   Raw_context.t ->
   Signature.Public_key_hash.t ->
   Signature.Public_key.t ->
@@ -92,10 +90,11 @@ val get_balance_carbonated :
   Contract_repr.t ->
   (Raw_context.t * Tez_repr.t) tzresult Lwt.t
 
-(** Find the counter of an implicit contract by its PKH.
-    Fails with [Empty_implicit_contract] if the contract is not allocated. *)
-val get_counter :
-  Raw_context.t -> Signature.Public_key_hash.t -> Z.t tzresult Lwt.t
+(** Find the counter of a contract.
+
+    If the contract is not allocated, fails with [Empty_implicit_contract] if
+    it's implicit, or [Non_existing_contract] if it's not implicit. *)
+val get_counter : Raw_context.t -> Contract_repr.t -> Z.t tzresult Lwt.t
 
 val get_global_counter : Raw_context.t -> Z.t tzresult Lwt.t
 
