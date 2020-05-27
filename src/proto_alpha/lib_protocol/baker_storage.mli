@@ -174,6 +174,14 @@ module Proof : sig
     Raw_context.t -> Baker_hash.t -> Raw_level_repr.LSet.t tzresult Lwt.t
 end
 
+(** Get baker's pending consensus key and its activation cycle, if any. If the
+    pending consensus key doesn't get changed before its activation cycle, it
+    will become active and it will be used for baking and endorsing. *)
+val get_pending_consensus_key :
+  Raw_context.t ->
+  Baker_hash.t ->
+  (Signature.Public_key.t * Cycle_repr.t) option tzresult Lwt.t
+
 (** Find if any baker uses the given public key hash as their pending consensus
     keys *)
 val is_pending_consensus_key :
