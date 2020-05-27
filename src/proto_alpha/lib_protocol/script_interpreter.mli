@@ -44,6 +44,8 @@ type error += Cannot_serialize_storage
 
 type error += Michelson_too_many_recursive_calls
 
+type error += Not_a_baker_contract
+
 type execution_result = {
   ctxt : context;
   code : Script.expr;
