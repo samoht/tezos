@@ -211,7 +211,9 @@ let tez_of_opt_string_exn index field s =
 
 let prepare_batch_operation cctxt ?arg ?fee ?gas_limit ?storage_limit
     ?entrypoint source index batch =
-  Client_proto_contracts.ContractAlias.find_destination cctxt batch.destination
+  Client_proto_contracts.Contract_alias.find_destination
+    cctxt
+    batch.destination
   >>=? fun (_, destination) ->
   tez_of_string_exn index "amount" batch.amount
   >>=? fun amount ->
@@ -287,7 +289,7 @@ let commands network () =
       ~desc:"Get the balance of a contract."
       no_options
       ( prefixes ["get"; "balance"; "for"]
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ stop )
       (fun () (_, contract) (cctxt : Protocol_client_context.full) ->
         get_balance cctxt ~chain:cctxt#chain ~block:cctxt#block contract
@@ -299,7 +301,7 @@ let commands network () =
       ~desc:"Get the storage of a contract."
       no_options
       ( prefixes ["get"; "contract"; "storage"; "for"]
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ stop )
       (fun () (_, contract) (cctxt : Protocol_client_context.full) ->
         get_storage cctxt ~chain:cctxt#chain ~block:cctxt#block contract
@@ -320,7 +322,7 @@ let commands network () =
       @@ prefixes ["of"; "type"]
       @@ Clic.param ~name:"type" ~desc:"type of the key" data_parameter
       @@ prefix "in"
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ stop )
       (fun () key key_type (_, contract) (cctxt : Protocol_client_context.full) ->
         get_contract_big_map_value
@@ -366,7 +368,7 @@ let commands network () =
       ~desc:"Get the code of a contract."
       no_options
       ( prefixes ["get"; "contract"; "code"; "for"]
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ stop )
       (fun () (_, contract) (cctxt : Protocol_client_context.full) ->
         get_script cctxt ~chain:cctxt#chain ~block:cctxt#block contract
@@ -394,7 +396,7 @@ let commands network () =
       ( prefixes ["get"; "contract"; "entrypoint"; "type"; "of"]
       @@ Clic.string ~name:"entrypoint" ~desc:"the entrypoint to describe"
       @@ prefixes ["for"]
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ stop )
       (fun () entrypoint (_, contract) (cctxt : Protocol_client_context.full) ->
         Michelson_v1_entrypoints.contract_entrypoint_type
@@ -413,7 +415,7 @@ let commands network () =
       ~desc:"Get the entrypoint list of a contract."
       no_options
       ( prefixes ["get"; "contract"; "entrypoints"; "for"]
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ stop )
       (fun () (_, contract) (cctxt : Protocol_client_context.full) ->
         Michelson_v1_entrypoints.list_contract_entrypoints
@@ -430,7 +432,7 @@ let commands network () =
       ~desc:"Get the list of unreachable paths in a contract's parameter type."
       no_options
       ( prefixes ["get"; "contract"; "unreachable"; "paths"; "for"]
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ stop )
       (fun () (_, contract) (cctxt : Protocol_client_context.full) ->
         Michelson_v1_entrypoints.list_contract_unreachables
@@ -447,7 +449,7 @@ let commands network () =
       ~desc:"Get the delegate of a contract."
       no_options
       ( prefixes ["get"; "delegate"; "for"]
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ stop )
       (fun () (_, contract) (cctxt : Protocol_client_context.full) ->
         Client_proto_contracts.get_delegate
@@ -482,7 +484,7 @@ let commands network () =
          fee_cap_arg
          burn_cap_arg)
       ( prefixes ["set"; "delegate"; "for"]
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ prefix "to"
       @@ Public_key_hash.source_param
            ~name:"dlgt"
@@ -568,7 +570,7 @@ let commands network () =
          fee_cap_arg
          burn_cap_arg)
       ( prefixes ["withdraw"; "delegate"; "from"]
-      @@ ContractAlias.destination_param ~name:"src" ~desc:"source contract"
+      @@ Contract_alias.destination_param ~name:"src" ~desc:"source contract"
       @@ stop )
       (fun ( fee,
              dry_run,
@@ -655,13 +657,13 @@ let commands network () =
          fee_cap_arg
          burn_cap_arg)
       ( prefixes ["originate"; "contract"]
-      @@ RawContractAlias.fresh_alias_param
+      @@ Raw_contract_alias.fresh_alias_param
            ~name:"new"
            ~desc:"name of the new contract"
       @@ prefix "transferring"
       @@ tez_param ~name:"qty" ~desc:"amount taken from source"
       @@ prefix "from"
-      @@ ContractAlias.destination_param
+      @@ Contract_alias.destination_param
            ~name:"src"
            ~desc:"name of the source contract"
       @@ prefix "running"
@@ -691,7 +693,7 @@ let commands network () =
            (_, source)
            program
            (cctxt : Protocol_client_context.full) ->
-        RawContractAlias.of_fresh cctxt force alias_name
+        Raw_contract_alias.of_fresh cctxt force alias_name
         >>=? fun alias_name ->
         Lwt.return (Micheline_parser.no_parsing_error program)
         >>=? fun {expanded = code; _} ->
@@ -767,7 +769,7 @@ let commands network () =
          burn_cap_arg
          default_entrypoint_arg)
       ( prefixes ["multiple"; "transfers"; "from"]
-      @@ ContractAlias.destination_param
+      @@ Contract_alias.destination_param
            ~name:"src"
            ~desc:"name of the source contract"
       @@ prefix "using"
@@ -913,11 +915,11 @@ let commands network () =
       ( prefixes ["transfer"]
       @@ tez_param ~name:"qty" ~desc:"amount taken from source"
       @@ prefix "from"
-      @@ ContractAlias.destination_param
+      @@ Contract_alias.destination_param
            ~name:"src"
            ~desc:"name of the source contract"
       @@ prefix "to"
-      @@ ContractAlias.destination_param
+      @@ Contract_alias.destination_param
            ~name:"dst"
            ~desc:"name/literal of the destination contract"
       @@ stop )
@@ -980,11 +982,11 @@ let commands network () =
          burn_cap_arg
          entrypoint_arg)
       ( prefixes ["call"]
-      @@ ContractAlias.destination_param
+      @@ Contract_alias.destination_param
            ~name:"dst"
            ~desc:"name/literal of the destination contract"
       @@ prefix "from"
-      @@ ContractAlias.destination_param
+      @@ Contract_alias.destination_param
            ~name:"src"
            ~desc:"name of the source contract"
       @@ stop )
@@ -1041,7 +1043,7 @@ let commands network () =
          fee_cap_arg
          burn_cap_arg)
       ( prefixes ["reveal"; "key"; "for"]
-      @@ ContractAlias.alias_param
+      @@ Contract_alias.alias_param
            ~name:"src"
            ~desc:"name of the source contract"
       @@ stop )
