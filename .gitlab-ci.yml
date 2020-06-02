@@ -418,6 +418,12 @@ integration:deprecated_rpc:
     - poetry run pytest tests/test_deprecated_rpc.py -s --log-dir=tmp
   stage: test
 
+integration:double_baking:
+  <<: *integration_python_definition
+  script:
+    - poetry run pytest tests/test_double_baking.py -s --log-dir=tmp
+  stage: test
+
 integration:double_endorsement:
   <<: *integration_python_definition
   script:
