@@ -11,6 +11,7 @@ import time
 
 import pytest
 
+from client import client_output
 from launchers.sandbox import Sandbox
 from tools import constants, paths, utils
 
@@ -115,7 +116,8 @@ class TestVotingFull:
 
     def test_submit_proto_b_proposal(self, sandbox, session):
         client = sandbox.client(0)
-        proposals = client.submit_proposals('bootstrap1', [PROTO_B])
+        cmd = ['submit', 'proposals', 'for', 'bootstrap1', PROTO_B]
+        proposals = client_output.SubmitProposalsResult(client.run(cmd))
         session['prop_hash'] = proposals.operation_hash
 
     def test_wait_for_operation_inclusion(self, sandbox, session):

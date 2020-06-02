@@ -1,8 +1,10 @@
 import os
 import time
+
 import pytest
 from tools import utils, constants, paths
 from client.client_output import InvalidClientOutput
+
 from launchers.sandbox import Sandbox
 
 BAKE_ARGS = ['--max-priority', '512', '--minimal-timestamp']
@@ -44,7 +46,7 @@ def sandbox(sandbox: Sandbox, contract_name, session: dict):
     sandbox.add_node(2, params=constants.NODE_PARAMS)
     client = sandbox.client(1)
     utils.activate_alpha(sandbox.client(1), activate_in_the_past=True)
-    client.bake("bootstrap1", BAKE_ARGS)
+    client.bake("baker1", BAKE_ARGS)
     time.sleep(2)
     # Deploy a contract
     contract = os.path.join(paths.CONTRACT_PATH, 'attic',
@@ -53,7 +55,7 @@ def sandbox(sandbox: Sandbox, contract_name, session: dict):
     origination = client.originate(contract_name, 10.0,
                                    "bootstrap1", contract, args)
     session['originated_accounts'].append(origination.contract)
-    client.bake("bootstrap1", ["--minimal-timestamp"])
+    client.bake("baker1", ["--minimal-timestamp"])
     assert utils.check_block_contains_operations(
         client, [origination.operation_hash])
     return sandbox
@@ -79,7 +81,7 @@ class TestRPCsExistence:
 
     def test_constants(self, sandbox: Sandbox):
         sandbox.client(2).rpc('get', '/network/self')
-        sandbox.client(1).bake('bootstrap1', BAKE_ARGS)
+        sandbox.client(1).bake('baker1', BAKE_ARGS)
         time.sleep(3)
 
     def test_chain_blocks(self, sandbox: Sandbox):
@@ -93,7 +95,7 @@ class TestRPCsExistence:
 
     @pytest.mark.skip(reason="TODO")
     def test_chain_invalid_blocks_block_hash(self, sandbox: Sandbox):
-        res = sandbox.client(1).bake('bootstrap1', BAKE_ARGS)
+        res = sandbox.client(1).bake('baker1', BAKE_ARGS)
         sandbox.client(1).rpc('get',
                               f'/chains/{CHAIN_ID}/invalid_blocks/'
                               f'{res.block_hash}')
@@ -273,8 +275,13 @@ class TestRPCsExistence:
                                   f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
                                   f'context/contracts/{contract_id}/counter')
 
+    @pytest.mark.skip(
+        reason="The boostrapped implicit accounts are not self-delegated or \
+                even delegated anymore, so the RPC fails with 'No service \
+                found at this URL' as expected")
     def test_chain_block_context_contract_delegate(self, sandbox: Sandbox,
                                                    session: dict):
+        # TODO set delegate to test
         for contract_id in session["implicit_accounts"]:
             sandbox.client(1).rpc('get',
                                   f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
@@ -353,78 +360,24 @@ class TestRPCsExistence:
                               f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
                               'context/delegates')
 
-    def test_chain_block_context_delegate_implicit(self, sandbox: Sandbox,
-                                                   session: dict):
-        # only implicit accounts
-        accounts = session["implicit_accounts"]
-        for pkh in accounts:
-            sandbox.client(1).rpc('get',
-                                  f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
-                                  f'context/delegates/{pkh}')
-
     @pytest.mark.skip("TODO: Expected behaviour for originated, must exist?")
     def test_chain_block_context_delegate_originated(self, sandbox: Sandbox):
         pass
-
-    def test_chain_block_context_delegate_balance_implicit(self,
-                                                           sandbox: Sandbox,
-                                                           session: dict):
-        # only implicit accounts
-        accounts = session["implicit_accounts"]
-        for pkh in accounts:
-            sandbox.client(1).rpc('get',
-                                  f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
-                                  f'context/delegates/{pkh}/balance')
 
     @pytest.mark.skip("TODO: Expected behaviour for originated, must exist?")
     def test_chain_block_context_delegate_balance_originated(self,
                                                              sandbox: Sandbox):
         pass
 
-    def test_chain_block_context_delegate_deactivated_implicit(
-            self, sandbox: Sandbox, session: dict
-    ):
-        # only implicit accounts
-        accounts = session["implicit_accounts"]
-        for pkh in accounts:
-            sandbox.client(1).rpc('get',
-                                  f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
-                                  f'context/delegates/{pkh}/deactivated')
-
     @pytest.mark.skip("TODO: Expected behaviour for originated, must exist?")
     def test_chain_block_context_delegate_deactivated_originated(
             self, sandbox: Sandbox, session: dict):
         pass
 
-    def test_chain_block_context_delegate_delegated_balance_implicit(
-            self,
-            sandbox: Sandbox,
-            session: dict
-    ):
-        # only implicit accounts
-        accounts = session["implicit_accounts"]
-        for pkh in accounts:
-            sandbox.client(1).rpc('get',
-                                  f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
-                                  f'context/delegates/{pkh}/delegated_balance')
-
     @pytest.mark.skip("TODO: Expected behaviour for originated, must exist?")
     def test_chain_block_context_delegate_delegated_balance_originated(
             self, sandbox: Sandbox, session: dict):
         pass
-
-    def test_chain_block_context_delegate_delegated_contracts_implicit(
-            self,
-            sandbox: Sandbox,
-            session: dict
-    ):
-        # only implicit accounts
-        accounts = session["implicit_accounts"]
-        for pkh in accounts:
-            sandbox.client(1).rpc('get',
-                                  f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
-                                  f'context/delegates/{pkh}/'
-                                  'delegated_contracts')
 
     @pytest.mark.skip("TODO: Expected behaviour for originated, must exist?")
     def test_chain_block_context_delegate_delegated_contracts_originated(
@@ -434,18 +387,6 @@ class TestRPCsExistence:
     ):
         pass
 
-    def test_chain_block_context_delegate_frozen_balance_implicit(
-            self,
-            sandbox: Sandbox,
-            session: dict
-    ):
-        # only implicit accounts
-        accounts = session["implicit_accounts"]
-        for pkh in accounts:
-            sandbox.client(1).rpc('get',
-                                  f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
-                                  f'context/delegates/{pkh}/frozen_balance')
-
     @pytest.mark.skip("TODO: Expected behaviour for originated, must exist?")
     def test_chain_block_context_delegate_frozen_balance_originated(
             self,
@@ -454,18 +395,6 @@ class TestRPCsExistence:
     ):
         pass
 
-    def test_chain_block_context_delegate_frozen_balance_by_cycle_implicit(
-            self,
-            sandbox: Sandbox,
-            session: dict):
-        # only implicit accounts
-        accounts = session["implicit_accounts"]
-        for pkh in accounts:
-            sandbox.client(1).rpc('get',
-                                  f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
-                                  f'context/delegates/{pkh}/'
-                                  'frozen_balance_by_cycle')
-
     @pytest.mark.skip("TODO: Expected behaviour for originated, must exist?")
     def test_chain_block_context_delegate_frozen_balance_by_cycle_originated(
             self,
@@ -473,33 +402,11 @@ class TestRPCsExistence:
             session: dict):
         pass
 
-    def test_chain_block_context_delegate_grace_period_implicit(
-            self, sandbox: Sandbox, session: dict
-    ):
-        # only implicit accounts
-        accounts = session["implicit_accounts"]
-        for pkh in accounts:
-            sandbox.client(1).rpc('get',
-                                  f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
-                                  f'context/delegates/{pkh}/grace_period')
-
     @pytest.mark.skip("TODO: Expected behaviour for originated, must exist?")
     def test_chain_block_context_delegate_grace_period_originated(
             self, sandbox: Sandbox, session: dict
     ):
         pass
-
-    def test_chain_block_context_delegate_staking_balance_implicit(
-            self,
-            sandbox: Sandbox,
-            session: dict
-    ):
-        # only implicit accounts
-        accounts = session["implicit_accounts"]
-        for pkh in accounts:
-            sandbox.client(1).rpc('get',
-                                  f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
-                                  f'context/delegates/{pkh}/staking_balance')
 
     @pytest.mark.skip("TODO: Expected behaviour for originated, must exist?")
     def test_chain_block_context_delegate_staking_balance_originated(
@@ -508,6 +415,11 @@ class TestRPCsExistence:
             session: dict
     ):
         pass
+
+    def test_chain_block_context_bakers(self, sandbox: Sandbox):
+        sandbox.client(1).rpc('get',
+                              f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
+                              f'context/bakers')
 
     def test_chain_block_context_nonces_block_level(self, sandbox: Sandbox):
         sandbox.client(1).rpc('get',
@@ -565,7 +477,7 @@ class TestRPCsExistence:
                               f'helpers/complete/{prefix}')
 
     def test_chain_block_helpers_complete_prefix2(self, sandbox: Sandbox):
-        res = sandbox.client(1).bake('bootstrap1', BAKE_ARGS)
+        res = sandbox.client(1).bake('baker1', BAKE_ARGS)
         prefix = res.block_hash[:5]
         sandbox.client(1).rpc('get',
                               f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/'
@@ -605,8 +517,8 @@ class TestRPCsExistence:
     def test_add_transactions(self, sandbox: Sandbox):
         sandbox.client(1).transfer(1.000, 'bootstrap1', 'bootstrap2')
         sandbox.client(2).transfer(1.000, 'bootstrap3', 'bootstrap4')
-        sandbox.client(1).endorse('bootstrap1')
-        sandbox.client(1).bake('bootstrap1', BAKE_ARGS)
+        sandbox.client(1).endorse('baker1')
+        sandbox.client(1).bake('baker1', BAKE_ARGS)
         time.sleep(3)
 
     def test_chain_block_operation_hashes_list_offset(self, sandbox: Sandbox):

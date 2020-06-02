@@ -1,5 +1,6 @@
-import shutil
 import random
+import shutil
+
 import pytest
 
 from client.client import Client
@@ -64,8 +65,8 @@ class TestManualBaking:
         assert level["voting_period_position"] == 2
 
     def test_bake_two_blocks(self, client: Client):
-        client.bake('bootstrap1', BAKE_ARGS)
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         period_info = client.get_current_period()
         level = client.get_current_level()
         assert level["level_position"] == 2
@@ -77,7 +78,7 @@ class TestManualBaking:
 
     def test_last_block_of_proposal_period(self, client: Client):
         # last block of voting period 0
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         period_info = client.get_current_period()
         assert period_info["voting_period"]["index"] == 0
         assert period_info["voting_period"]["kind"] == "proposal"
@@ -117,7 +118,7 @@ class TestManualBaking:
         # using the client it's not possible to add voting operation on the
         # first block of a voting period. This is to be fixed in a futur
         # protocol
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         period_info = client.get_current_period()
         assert period_info["voting_period"]["index"] == 1
         assert period_info["voting_period"]["kind"] == "proposal"
@@ -127,13 +128,13 @@ class TestManualBaking:
 
     def test_submit_proposals(self, client: Client, session: dict):
         protos = session['protos']
-        client.submit_proposals('bootstrap1', [protos[0]])
-        client.submit_proposals('bootstrap2', [protos[0], protos[1]])
-        client.submit_proposals('bootstrap3', [protos[1]])
-        client.submit_proposals('bootstrap4', [protos[2]])
+        client.submit_proposals('baker1', [protos[0]])
+        client.submit_proposals('baker2', [protos[0], protos[1]])
+        client.submit_proposals('baker3', [protos[1]])
+        client.submit_proposals('baker4', [protos[2]])
 
     def test_bake_one_block(self, client: Client):
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         period_info = client.get_current_period()
         assert period_info["voting_period"]["index"] == 1
         assert period_info["voting_period"]["kind"] == "proposal"
@@ -145,17 +146,17 @@ class TestManualBaking:
         assert client.get_proposals() != []
 
     def test_bake_until_prev_last_block_of_voting_period(self, client: Client):
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         period_info = client.get_current_period()
         assert period_info["position"] == 2
         assert period_info["remaining"] == 1
 
     def test_break_proposal_tie(self, client: Client, session: dict):
         protos = session['protos']
-        client.submit_proposals('bootstrap4', [protos[1]])
+        client.submit_proposals('baker4', [protos[1]])
 
     def test_bake_last_block_of_proposal_period(self, client: Client):
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         period_info = client.get_current_period()
         metadata = client.get_metadata()
         meta_level = metadata["level"]
@@ -198,7 +199,7 @@ class TestManualBaking:
         # using the client it's not possible to add voting operation on the
         # first block of a voting period. This is to be fixed in a futur
         # protocol
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         period_info = client.get_current_period()
         assert period_info["voting_period"]["index"] == 2
         assert period_info["voting_period"]["kind"] == "testing_vote"
@@ -214,8 +215,9 @@ class TestManualBaking:
             nay_fraction = int(VOTES_PER_ROLL - yay_fraction -
                                (0.2 * VOTES_PER_ROLL))
             pass_fraction = int(0.2 * VOTES_PER_ROLL)
-            client.submit_ballot(f'bootstrap{i}', proto,
-                                 yay_fraction, nay_fraction, pass_fraction)
+            client.submit_ballot(f'baker{i}', proto,
+                                 yay_fraction, nay_fraction,
+                                 pass_fraction)
 
     def test_submit_ballot_negative_yays(self, client, session):
         with utils.assert_run_failure('Number of yays has to be a ' +
@@ -224,8 +226,9 @@ class TestManualBaking:
             nay_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
             pass_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
             proto = session['protos'][1]
-            client.submit_ballot('bootstrap1', proto,
-                                 yay_fraction, nay_fraction, pass_fraction)
+            client.submit_ballot('baker1', proto,
+                                 yay_fraction, nay_fraction,
+                                 pass_fraction)
 
     def test_submit_ballot_negative_nays(self, client, session):
         with utils.assert_run_failure('Number of nays has to be a ' +
@@ -234,8 +237,9 @@ class TestManualBaking:
             nay_fraction = int(random.uniform(-0.4, -0.2) * VOTES_PER_ROLL)
             pass_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
             proto = session['protos'][1]
-            client.submit_ballot('bootstrap1', proto,
-                                 yay_fraction, nay_fraction, pass_fraction)
+            client.submit_ballot('baker1', proto,
+                                 yay_fraction, nay_fraction,
+                                 pass_fraction)
 
     def test_submit_ballot_negative_passes(self, client, session):
         with utils.assert_run_failure('Number of passes has to be a ' +
@@ -244,8 +248,9 @@ class TestManualBaking:
             nay_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
             pass_fraction = int(random.uniform(-0.4, -0.2) * VOTES_PER_ROLL)
             proto = session['protos'][1]
-            client.submit_ballot('bootstrap1', proto,
-                                 yay_fraction, nay_fraction, pass_fraction)
+            client.submit_ballot('baker1', proto,
+                                 yay_fraction, nay_fraction,
+                                 pass_fraction)
 
     def test_submit_ballot_bigger_votes_per_roll(self, client, session):
         with utils.assert_run_failure('Total number of yays/nays/passes ' +
@@ -254,8 +259,9 @@ class TestManualBaking:
             nay_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
             pass_fraction = int(random.uniform(0.4, 0.6) * VOTES_PER_ROLL)
             proto = session['protos'][1]
-            client.submit_ballot('bootstrap1', proto,
-                                 yay_fraction, nay_fraction, pass_fraction)
+            client.submit_ballot('baker1', proto,
+                                 yay_fraction, nay_fraction,
+                                 pass_fraction)
 
     def test_submit_ballot_smaller_votes_per_roll(self, client, session):
         with utils.assert_run_failure('Total number of yays/nays/passes ' +
@@ -264,13 +270,13 @@ class TestManualBaking:
             nay_fraction = int(random.uniform(0.1, 0.3) * VOTES_PER_ROLL)
             pass_fraction = int(random.uniform(0.1, 0.3) * VOTES_PER_ROLL)
             proto = session['protos'][1]
-            client.submit_ballot('bootstrap1', proto,
+            client.submit_ballot('baker1', proto,
                                  yay_fraction, nay_fraction, pass_fraction)
 
     def test_bake_until_prev_last_block_of_voting_period2(self,
                                                           client: Client):
-        client.bake('bootstrap1', BAKE_ARGS)
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         period_info = client.get_current_period()
         level = client.get_current_level()
         assert level["level_position"] == 10
@@ -282,7 +288,7 @@ class TestManualBaking:
 
     def test_submit_failing_ballot(self, client: Client, session: dict):
         proto = session['protos'][1]
-        client.submit_ballot(f'bootstrap{4}', proto, 0, 100, 0)
+        client.submit_ballot('baker4', proto, 0, 100, 0)
 
     def test_level_info_period_offset2(self, client: Client):
         level = client.get_current_level(offset=-1)
@@ -299,7 +305,7 @@ class TestManualBaking:
         assert level["voting_period_position"] == 0
 
     def test_bake_first_block_of_new_proposal_period(self, client: Client):
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         # Because of the current hack in proposal here we make sure we get the
         # correct value
         period_info = client.get_current_period()
@@ -334,7 +340,7 @@ class TestManualBaking:
         assert period_info["position"] == 3
         assert period_info["remaining"] == 0
         assert meta_period_info == period_info
-        client.bake('bootstrap1', BAKE_ARGS)
+        client.bake('baker1', BAKE_ARGS)
         period_info = client.get_current_period()
         level = client.get_current_level()
         assert level["level_position"] == 12

@@ -28,7 +28,7 @@ class TestOriginationCall:
         origination = client.originate('foobar', 1000,
                                        'bootstrap1', contract, args)
         session['contract'] = origination.contract
-        client.bake('bootstrap5', BAKE_ARGS)
+        client.bake('baker5', BAKE_ARGS)
 
         # Unsolved mistery:
         #    client.wait_for_inclusion(origination.operation_hash)
@@ -44,7 +44,7 @@ class TestOriginationCall:
         bootstrap3 = '"tz1faswCTDciRzE4oJ9jn2Vm2dvjeyA9fUzU"'
         transfer = client.call('bootstrap2', contract,
                                ['--arg', bootstrap3])
-        client.bake('bootstrap5', BAKE_ARGS)
+        client.bake('baker5', BAKE_ARGS)
         assert utils.check_block_contains_operations(client,
                                                      [transfer.operation_hash])
 
