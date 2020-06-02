@@ -32,7 +32,7 @@ let ten_tez = Tez.of_int 10
 
 let simple_reveal () =
   Context.init 1
-  >>=? fun (blk, contracts) ->
+  >>=? fun (blk, contracts, _bakers) ->
   let c = List.nth contracts 0 in
   let new_c = Account.new_account () in
   let new_contract = Alpha_context.Contract.implicit_contract new_c.pkh in
@@ -41,7 +41,7 @@ let simple_reveal () =
   >>=? fun operation ->
   Block.bake blk ~operation
   >>=? fun blk ->
-  Context.Contract.is_manager_key_revealed (B blk) new_contract
+  Context.Contract.is_public_key_revealed (B blk) new_contract
   >|=? (function
          | true -> Stdlib.failwith "Unexpected revelation" | false -> ())
   >>=? fun () ->
@@ -50,13 +50,13 @@ let simple_reveal () =
   >>=? fun operation ->
   Block.bake blk ~operation
   >>=? fun blk ->
-  Context.Contract.is_manager_key_revealed (B blk) new_contract
+  Context.Contract.is_public_key_revealed (B blk) new_contract
   >|=? function
   | true -> () | false -> Stdlib.failwith "New contract revelation failed."
 
 let empty_account_on_reveal () =
   Context.init 1
-  >>=? fun (blk, contracts) ->
+  >>=? fun (blk, contracts, _bakers) ->
   let c = List.nth contracts 0 in
   let new_c = Account.new_account () in
   let new_contract = Alpha_context.Contract.implicit_contract new_c.pkh in
@@ -66,7 +66,7 @@ let empty_account_on_reveal () =
   >>=? fun operation ->
   Block.bake blk ~operation
   >>=? fun blk ->
-  Context.Contract.is_manager_key_revealed (B blk) new_contract
+  Context.Contract.is_public_key_revealed (B blk) new_contract
   >|=? (function
          | true -> Stdlib.failwith "Unexpected revelation" | false -> ())
   >>=? fun () ->
@@ -79,7 +79,7 @@ let empty_account_on_reveal () =
   >>=? fun _ ->
   Block.bake blk ~operation
   >>=? fun blk ->
-  Context.Contract.is_manager_key_revealed (B blk) new_contract
+  Context.Contract.is_public_key_revealed (B blk) new_contract
   >|=? function
   | false ->
       ()
@@ -88,7 +88,7 @@ let empty_account_on_reveal () =
 
 let not_enough_found_for_reveal () =
   Context.init 1
-  >>=? fun (blk, contracts) ->
+  >>=? fun (blk, contracts, _bakers) ->
   let c = List.nth contracts 0 in
   let new_c = Account.new_account () in
   let new_contract = Alpha_context.Contract.implicit_contract new_c.pkh in
@@ -97,7 +97,7 @@ let not_enough_found_for_reveal () =
   >>=? fun operation ->
   Block.bake blk ~operation
   >>=? fun blk ->
-  Context.Contract.is_manager_key_revealed (B blk) new_contract
+  Context.Contract.is_public_key_revealed (B blk) new_contract
   >|=? (function
          | true -> Stdlib.failwith "Unexpected revelation" | false -> ())
   >>=? fun () ->

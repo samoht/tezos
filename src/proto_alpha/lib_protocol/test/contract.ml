@@ -42,7 +42,7 @@ let check_empty_contract_counter ~loc b contract =
 (** Check the state of an unregistered contract *)
 let test_unregistered_implicit_contract () =
   Context.init 1
-  >>=? fun (b, _) ->
+  >>=? fun (b, _, _bakers) ->
   let unregistered_pkh = (Account.new_account ()).pkh in
   let unregistered_contract = Contract.implicit_contract unregistered_pkh in
   Context.Contract.info (B b) unregistered_contract
@@ -61,7 +61,7 @@ let test_unregistered_implicit_contract () =
     re-allocated. *)
 let test_emptied_implicit_contract () =
   Context.init 1
-  >>=? fun (b, contracts) ->
+  >>=? fun (b, contracts, _bakers) ->
   let bootstrap = List.hd contracts in
   let new_contract = Contract.implicit_contract (Account.new_account ()).pkh in
   (* Send some tezzies to a new contract to allocate it first *)
