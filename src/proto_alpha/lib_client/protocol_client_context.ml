@@ -2,6 +2,7 @@
 (*                                                                           *)
 (* Open Source License                                                       *)
 (* Copyright (c) 2018 Dynamic Ledger Solutions, Inc. <contact@tezos.com>     *)
+(* Copyright (c) 2020 Metastate AG <hello@metastate.dev>                     *)
 (*                                                                           *)
 (* Permission is hereby granted, free of charge, to any person obtaining a   *)
 (* copy of this software and associated documentation files (the "Software"),*)
@@ -159,19 +160,19 @@ let () =
        Protocol.Alpha_context.Lazy_storage.legacy_big_map_diff_encoding ;
   register
   @@ def
-       "delegate"
+       "baker"
        ["frozen_balance"]
-       Protocol.Alpha_context.Delegate.frozen_balance_encoding ;
+       Protocol.Alpha_context.Baker.frozen_balance_encoding ;
+  register
+  @@ def
+       "baker"
+       ["frozen_balance_by_cycles"]
+       Protocol.Alpha_context.Baker.frozen_balance_by_cycle_encoding ;
   register
   @@ def
        "receipt"
        ["balance_updates"]
        Protocol.Alpha_context.Receipt.balance_updates_encoding ;
-  register
-  @@ def
-       "delegate"
-       ["frozen_balance_by_cycles"]
-       Protocol.Alpha_context.Delegate.frozen_balance_by_cycle_encoding ;
   register ~pp:Protocol.Alpha_context.Level.pp_full
   @@ def "level" [] Protocol.Alpha_context.Level.encoding ;
   register @@ def "operation" [] Protocol.Alpha_context.Operation.encoding ;
