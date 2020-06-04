@@ -571,7 +571,7 @@ let apply_manager_operation_content :
                 ( Fees.origination_burn ctxt
                 >|? fun (ctxt, origination_burn) ->
                 ( ctxt,
-                  [(Delegate.Contract payer, Delegate.Debited origination_burn)],
+                  [(Receipt.Contract payer, Receipt.Debited origination_burn)],
                   true ) ) ) )
       >>=? fun (ctxt, maybe_burn_balance_update, allocated_destination_contract)
                ->
@@ -611,8 +611,8 @@ let apply_manager_operation_content :
                   storage = None;
                   lazy_storage_diff = None;
                   balance_updates =
-                    Delegate.cleanup_balance_updates
-                      ( [ (Delegate.Contract source, Delegate.Debited amount);
+                    Receipt.cleanup_balance_updates
+                      ( [ (Receipt.Contract source, Receipt.Debited amount);
                           (Contract destination, Credited amount) ]
                       @ maybe_burn_balance_update );
                   originated_contracts = [];
@@ -662,7 +662,7 @@ let apply_manager_operation_content :
                 storage = Some storage;
                 lazy_storage_diff;
                 balance_updates =
-                  Delegate.cleanup_balance_updates
+                  Receipt.cleanup_balance_updates
                     [ (Contract payer, Debited fees);
                       (Contract source, Debited amount);
                       (Contract destination, Credited amount) ];
@@ -742,7 +742,7 @@ let apply_manager_operation_content :
           {
             lazy_storage_diff;
             balance_updates =
-              Delegate.cleanup_balance_updates
+              Receipt.cleanup_balance_updates
                 [ (Contract payer, Debited fees);
                   (Contract payer, Debited origination_burn);
                   (Contract source, Debited credit);
@@ -925,7 +925,7 @@ let rec mark_skipped :
         (Manager_operation_result
            {
              balance_updates =
-               Delegate.cleanup_balance_updates
+               Receipt.cleanup_balance_updates
                  [ (Contract source, Debited fee);
                    (Fees (baker, level.cycle), Credited fee) ];
              operation_result = skipped_operation_result operation;
@@ -937,7 +937,7 @@ let rec mark_skipped :
         ( Manager_operation_result
             {
               balance_updates =
-                Delegate.cleanup_balance_updates
+                Receipt.cleanup_balance_updates
                   [ (Contract source, Debited fee);
                     (Fees (baker, level.cycle), Credited fee) ];
               operation_result = skipped_operation_result operation;
@@ -1024,7 +1024,7 @@ let rec apply_manager_contents_list_rec :
         Manager_operation_result
           {
             balance_updates =
-              Delegate.cleanup_balance_updates
+              Receipt.cleanup_balance_updates
                 [ (Contract source, Debited fee);
                   (Fees (baker, level.cycle), Credited fee) ];
             operation_result;
@@ -1041,7 +1041,7 @@ let rec apply_manager_contents_list_rec :
             Manager_operation_result
               {
                 balance_updates =
-                  Delegate.cleanup_balance_updates
+                  Receipt.cleanup_balance_updates
                     [ (Contract source, Debited fee);
                       (Fees (baker, level.cycle), Credited fee) ];
                 operation_result;
@@ -1055,7 +1055,7 @@ let rec apply_manager_contents_list_rec :
             Manager_operation_result
               {
                 balance_updates =
-                  Delegate.cleanup_balance_updates
+                  Receipt.cleanup_balance_updates
                     [ (Contract source, Debited fee);
                       (Fees (baker, level.cycle), Credited fee) ];
                 operation_result;
@@ -1158,7 +1158,7 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
             (Endorsement_result
                {
                  balance_updates =
-                   Delegate.cleanup_balance_updates
+                   Receipt.cleanup_balance_updates
                      [ ( Contract (Contract.implicit_contract delegate),
                          Debited deposit );
                        (Deposits (delegate, level.cycle), Credited deposit);
@@ -1224,7 +1224,7 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
           ( ctxt,
             Single_result
               (Double_endorsement_evidence_result
-                 (Delegate.cleanup_balance_updates
+                 (Receipt.cleanup_balance_updates
                     [ ( Deposits (delegate1, level.cycle),
                         Debited balance.deposit );
                       (Fees (delegate1, level.cycle), Debited balance.fees);
@@ -1297,7 +1297,7 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
         ( ctxt,
           Single_result
             (Double_baking_evidence_result
-               (Delegate.cleanup_balance_updates
+               (Receipt.cleanup_balance_updates
                   [ (Deposits (delegate, level.cycle), Debited balance.deposit);
                     (Fees (delegate, level.cycle), Debited balance.fees);
                     (Rewards (delegate, level.cycle), Debited balance.rewards);
@@ -1516,7 +1516,7 @@ let finalize_application ctxt protocol_data delegate ~block_delay =
   >>=? fun ctxt ->
   let cycle = (Level.current ctxt).cycle in
   let balance_updates =
-    Delegate.(
+    Receipt.(
       cleanup_balance_updates
         ( [ (Contract (Contract.implicit_contract delegate), Debited deposit);
             (Deposits (delegate, cycle), Credited deposit);
