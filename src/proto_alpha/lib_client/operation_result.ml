@@ -137,7 +137,7 @@ let pp_balance_updates ppf = function
   | [] ->
       ()
   | balance_updates ->
-      let open Delegate in
+      let open Receipt in
       (* For dry runs, the baker's key is zero
          (tz1Ke2h7sDdakHJQh8WX4Z372du1KChsksyU). Instead of printing this
          key hash, we want to make the result more informative. *)
@@ -159,6 +159,8 @@ let pp_balance_updates ppf = function
                   Format.asprintf "fees(%a,%a)" pp_baker pkh Cycle.pp l
               | Deposits (pkh, l) ->
                   Format.asprintf "deposits(%a,%a)" pp_baker pkh Cycle.pp l
+              | Migration c ->
+                  Format.asprintf "migration(%a)" Contract.pp c
             in
             (balance, update))
           balance_updates

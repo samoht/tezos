@@ -164,9 +164,9 @@ let () =
        Protocol.Alpha_context.Delegate.frozen_balance_encoding ;
   register
   @@ def
-       "delegate"
+       "receipt"
        ["balance_updates"]
-       Protocol.Alpha_context.Delegate.balance_updates_encoding ;
+       Protocol.Alpha_context.Receipt.balance_updates_encoding ;
   register
   @@ def
        "delegate"
