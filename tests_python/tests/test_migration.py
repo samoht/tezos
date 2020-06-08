@@ -37,7 +37,12 @@ DEPOSIT_RECEIPTS = [
         "kind": "freezer", "category": "deposits",
         "delegate": BAKER_PKH, "cycle": 0,
         "change": "512000000"}]
-MIGRATION_RECEIPTS: List[object] = []
+MIGRATION_RECEIPTS: List[object] = [
+    # invoice for bootstrap1 contract
+    {
+        "kind": "migration",
+        "contract": constants.IDENTITIES['bootstrap1']['identity'],
+        "change": str(662_607_015)}]
 
 # configure user-activate-upgrade at MIGRATION_LEVEL to test migration
 NODE_CONFIG = {
