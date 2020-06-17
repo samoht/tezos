@@ -213,8 +213,8 @@ Raw Sha512 hash: ?(\w*)'''
         self.sha512 = match.groups()[4]
 
 
-class SignatureResult:
-    """Result of a 'sign bytes' command."""
+class SignByteResult:
+    """Result of a 'sign bytes ...' command."""
 
     def __init__(self, client_output: str):
 
@@ -222,7 +222,7 @@ class SignatureResult:
         match = re.search(pattern, client_output)
         if match is None:
             raise InvalidClientOutput(client_output)
-        self.sig = match.groups()[0]
+        self.signature = match.groups()[0]
 
 
 class SetDelegateResult:
