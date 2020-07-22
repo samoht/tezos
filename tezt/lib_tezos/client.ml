@@ -223,6 +223,13 @@ let spawn_activate_protocol ?node ?(protocol = Constant.alpha) ?(fitness = 1)
         "--timestamp";
         timestamp ] )
 
+let remember_baker_contracts client =
+  Lwt_list.iter_s
+    (fun (baker : Constant.baker) ->
+      spawn_command client ["remember"; "contract"; baker.alias; baker.identity]
+      |> Process.check)
+    Constant.all_bakers
+
 let activate_protocol ?node ?protocol ?fitness ?key ?timestamp ?timestamp_delay
     client =
   spawn_activate_protocol
@@ -235,7 +242,7 @@ let activate_protocol ?node ?protocol ?fitness ?key ?timestamp ?timestamp_delay
     client
   |> Process.check
 
-let spawn_bake_for ?node ?(key = Constant.bootstrap1.alias)
+let spawn_bake_for ?node ?(key = Constant.baker1.identity)
     ?(minimal_timestamp = true) client =
   spawn_command
     client
