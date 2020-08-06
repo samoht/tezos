@@ -974,6 +974,7 @@ module Receipt : sig
     | Rewards of Signature.Public_key_hash.t * Cycle.t
     | Fees of Signature.Public_key_hash.t * Cycle.t
     | Deposits of Signature.Public_key_hash.t * Cycle.t
+    | Migration of Contract.t
 
   type balance_update = Debited of Tez.t | Credited of Tez.t
 

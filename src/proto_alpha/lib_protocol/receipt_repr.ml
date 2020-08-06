@@ -29,6 +29,7 @@ type balance =
   | Rewards of Signature.Public_key_hash.t * Cycle_repr.t
   | Fees of Signature.Public_key_hash.t * Cycle_repr.t
   | Deposits of Signature.Public_key_hash.t * Cycle_repr.t
+  | Migration of Contract_repr.t
 
 let balance_encoding =
   let open Data_encoding in
@@ -71,7 +72,15 @@ let balance_encoding =
               (req "delegate" Signature.Public_key_hash.encoding)
               (req "cycle" Cycle_repr.encoding))
            (function Deposits (d, l) -> Some ((), (), d, l) | _ -> None)
-           (fun ((), (), d, l) -> Deposits (d, l)) ]
+           (fun ((), (), d, l) -> Deposits (d, l));
+         case
+           (Tag 4)
+           ~title:"Migration"
+           (obj2
+              (req "kind" (constant "migration"))
+              (req "contract" Contract_repr.encoding))
+           (function Migration c -> Some ((), c) | _ -> None)
+           (fun ((), c) -> Migration c) ]
 
 type balance_update = Debited of Tez_repr.t | Credited of Tez_repr.t
 

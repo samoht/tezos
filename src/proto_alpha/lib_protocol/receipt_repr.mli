@@ -30,6 +30,8 @@ type balance =
   | Rewards of Signature.Public_key_hash.t * Cycle_repr.t
   | Fees of Signature.Public_key_hash.t * Cycle_repr.t
   | Deposits of Signature.Public_key_hash.t * Cycle_repr.t
+  | Migration of Contract_repr.t
+      (** Balance update applied in a protocol migration *)
 
 (** A credit or debit of tezzies to a balance. *)
 type balance_update = Debited of Tez_repr.t | Credited of Tez_repr.t
