@@ -91,8 +91,8 @@ let process_endorsements (cctxt : #Protocol_client_context.full) state
           Some
             Apply_results.(
               Operation_metadata
-                {contents = Single_result (Endorsement_result {baker; _})}) )
-        -> (
+                { contents = Single_result (Endorsement_result {baker; _});
+                  mapped_keys = _ }) ) -> (
           let new_endorsement : Kind.endorsement Alpha_context.operation =
             {shell; protocol_data}
           in
