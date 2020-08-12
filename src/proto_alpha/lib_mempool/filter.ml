@@ -204,7 +204,7 @@ let post_filter config ~validation_state_before:_
   match receipt with
   | No_operation_metadata ->
       assert false (* only for multipass validator *)
-  | Operation_metadata {contents} -> (
+  | Operation_metadata {contents; mapped_keys = _} -> (
     match contents with
     | Single_result (Endorsement_result _) ->
         Lwt.return_true
