@@ -112,7 +112,7 @@ let multiple_origination_and_delegation () =
   let tickets =
     List.fold_left
       (fun acc -> function No_operation_metadata -> assert false
-        | Operation_metadata {contents} ->
+        | Operation_metadata {contents; mapped_keys = _} ->
             to_list (Contents_result_list contents) @ acc)
       []
       tickets
@@ -187,7 +187,7 @@ let failing_operation_in_the_middle () =
   let tickets =
     List.fold_left
       (fun acc -> function No_operation_metadata -> assert false
-        | Operation_metadata {contents} ->
+        | Operation_metadata {contents; mapped_keys = _} ->
             to_list (Contents_result_list contents) @ acc)
       []
       tickets
@@ -243,7 +243,7 @@ let failing_operation_in_the_middle_with_fees () =
   let tickets =
     List.fold_left
       (fun acc -> function No_operation_metadata -> assert false
-        | Operation_metadata {contents} ->
+        | Operation_metadata {contents; mapped_keys = _} ->
             to_list (Contents_result_list contents) @ acc)
       []
       tickets
