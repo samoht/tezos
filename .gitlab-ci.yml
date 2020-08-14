@@ -328,6 +328,12 @@ integration:baker:
     - poetry run pytest tests/test_baker.py -s --log-dir=tmp
   stage: test
 
+integration:baker_compatibility:
+  <<: *integration_python_definition
+  script:
+    - poetry run pytest tests/test_baker_compatibility.py -s --log-dir=tmp
+  stage: test
+
 integration:baker_endorser:
   <<: *integration_python_definition
   script:
