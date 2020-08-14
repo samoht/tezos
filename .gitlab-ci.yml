@@ -322,6 +322,12 @@ integration:sandboxes:daemons-upgrade:
 
 # this section is updated using the script scripts/update_integration_test.sh
 ##BEGIN_INTEGRATION_PYTHON##
+integration:baker:
+  <<: *integration_python_definition
+  script:
+    - poetry run pytest tests/test_baker.py -s --log-dir=tmp
+  stage: test
+
 integration:baker_endorser:
   <<: *integration_python_definition
   script:
