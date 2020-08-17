@@ -10,11 +10,14 @@ from launchers.sandbox import Sandbox
 BAKE_ARGS = ['--max-priority', '512', '--minimal-timestamp']
 CHAIN_ID = "main"
 BLOCK_ID = "head"
-PKH = "edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav"
 PROTOCOL_HASH = "ProtoALphaALphaALphaALphaALphaALphaALphaALphaDdp3zK"
 BLOCK_LEVEL = "3"
 LIST_OFFSET = "0"
 OPERATION_OFFSET = "0"
+PKH = constants.IDENTITIES['baker1_key']['identity']
+BAKER_HASH = constants.BOOTSTRAP_BAKERS[0]['hash']
+# RPC paths for the new bakers and the legacy delegates path
+BAKERS_RPCS = [('bakers', BAKER_HASH), ('delegates', PKH)]
 
 
 @pytest.fixture(scope="class")
@@ -415,6 +418,26 @@ class TestRPCsExistence:
             session: dict
     ):
         pass
+
+    def test_chain_bakers_rpcs(self, sandbox: Sandbox):
+        for (sub, identity) in BAKERS_RPCS:
+            base = f'/chains/{CHAIN_ID}/blocks/{BLOCK_ID}/context/{sub}'
+            sandbox.client(1).rpc('get', base)
+            sandbox.client(1).rpc('get', f'{base}?active=true')
+            sandbox.client(1).rpc('get', f'{base}?inactive=true')
+            sandbox.client(1).rpc('get', f'{base}?active=false&inactive=false')
+
+            base = f'{base}/{identity}'
+            sandbox.client(1).rpc('get', base)
+            sandbox.client(1).rpc('get', f'{base}/balance')
+            sandbox.client(1).rpc('get', f'{base}/deactivated')
+            sandbox.client(1).rpc('get', f'{base}/delegated_balance')
+            sandbox.client(1).rpc('get', f'{base}/delegated_contracts')
+            sandbox.client(1).rpc('get', f'{base}/frozen_balance')
+            sandbox.client(1).rpc('get', f'{base}/frozen_balance_by_cycle')
+            sandbox.client(1).rpc('get', f'{base}/frozen_balance_by_cycle')
+            sandbox.client(1).rpc('get', f'{base}/grace_period')
+            sandbox.client(1).rpc('get', f'{base}/staking_balance')
 
     def test_chain_block_context_bakers(self, sandbox: Sandbox):
         sandbox.client(1).rpc('get',
