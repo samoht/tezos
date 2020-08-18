@@ -340,6 +340,12 @@ integration:baker_endorser:
     - poetry run pytest tests/test_baker_endorser.py -s --log-dir=tmp
   stage: test
 
+integration:baker_multisig:
+  <<: *integration_python_definition
+  script:
+    - poetry run pytest tests/test_baker_multisig.py -s --log-dir=tmp
+  stage: test
+
 integration:basic:
   <<: *integration_python_definition
   script:

@@ -1051,11 +1051,15 @@ class Client:
     def set_baker_threshold_and_owner_keys(
             self, baker: str,
             threshold: int,
-            keys: List[str]) -> str:
+            keys: List[str],
+            burn_cap: str = None) -> str:
         cmd = ['set', 'baker', baker, 'threshold', 'to', str(threshold), 'and',
                'owner', 'keys', 'to']
         cmd += keys
-        cmd += ['--burn-cap', '0.038']
+        if burn_cap is None:
+            cmd += ['--burn-cap', '0.038']
+        else:
+            cmd += ['--burn-cap', burn_cap]
         return self.run(cmd)
 
     def run_baker_script(self,
