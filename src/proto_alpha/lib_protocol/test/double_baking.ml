@@ -272,6 +272,57 @@ let unrequired_evidence_injected () =
   >>=? fun blk ->
   Block.bake ~policy:(Excluding [baker]) ~operation:evidence_2 blk
   >>=? fun _blk -> return_unit
+
+let assert_proof_exists ~loc ?(exists = true) cheat_level delegate blk =
+  Context.Delegate.info (B blk) delegate
+  >>=? fun delegate_info ->
+  let proof_exists =
+    Raw_level.LSet.mem cheat_level delegate_info.proof_levels
+  in
+  Assert.equal_bool ~loc proof_exists exists
+
+(** Outdated proof is deleted from storage *)
+let outdated_proof_has_been_cleaned () =
+  Context.init 2
+  >>=? fun (blk, contracts) ->
+  Context.get_constants (B blk)
+  >>=? fun Constants.{parametric = {preserved_cycles; blocks_per_cycle; _}; _} ->
+  Context.get_bakers (B blk)
+  >>=? fun bakers ->
+  let baker = List.hd bakers in
+  block_fork ~policy:(By_account baker) contracts blk
+  >>=? fun (blk_a, blk_b) ->
+  Context.get_level (B blk_a)
+  >>?= fun cheat_level ->
+  Op.double_baking (B blk_a) blk_a.header blk_b.header
+  |> fun evidence ->
+  Block.bake_until_n_cycle_end preserved_cycles blk_a
+  >>=? fun blk ->
+  Block.bake_n (Int32.to_int blocks_per_cycle - 2) blk
+  >>=? fun blk ->
+  Block.bake ~policy:(Excluding [baker]) ~operation:evidence blk
+  >>=? fun blk ->
+  assert_proof_exists ~loc:__LOC__ cheat_level baker blk
+  >>=? fun () ->
+  Block.bake blk
+  >>=? fun blk ->
+  Block.bake ~operation:evidence blk
+  >>= fun res ->
+  Assert.proto_error ~loc:__LOC__ res (function
+      | Cheating_proofs.Outdated_evidence _ ->
+          true
+      | _ ->
+          false)
+  >>=? fun () ->
+  (* proof storage is cleaned at the end of cycles *)
+  Block.bake_n (Int32.to_int blocks_per_cycle - 2) blk
+  >>=? fun blk ->
+  assert_proof_exists ~loc:__LOC__ cheat_level baker blk
+  >>=? fun () ->
+  Block.bake blk
+  >>=? fun blk ->
+  assert_proof_exists ~loc:__LOC__ ~exists:false cheat_level baker blk
+
 let tests =
   [ Test.tztest
       "valid double baking evidence"
@@ -297,4 +348,8 @@ let tests =
     Test.tztest
       "inject previously unrequired evidence"
       `Quick
-      unrequired_evidence_injected ]
+      unrequired_evidence_injected;
+    Test.tztest
+      "outdated proof has been cleaned from storage"
+      `Quick
+      outdated_proof_has_been_cleaned ]
