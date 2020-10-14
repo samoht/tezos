@@ -116,7 +116,7 @@ let invalid_double_endorsement () =
   Block.bake ~operation b
   >>= fun res ->
   Assert.proto_error ~loc:__LOC__ res (function
-      | Apply.Invalid_double_endorsement_evidence ->
+      | Cheating_proofs.Invalid_double_endorsement_evidence _ ->
           true
       | _ ->
           false)
@@ -139,7 +139,7 @@ let too_early_double_endorsement_evidence () =
   Block.bake ~operation b
   >>= fun res ->
   Assert.proto_error ~loc:__LOC__ res (function
-      | Apply.Too_early_double_endorsement_evidence _ ->
+      | Cheating_proofs.Too_early_evidence _ ->
           true
       | _ ->
           false)
@@ -169,7 +169,7 @@ let too_late_double_endorsement_evidence () =
   Block.bake ~operation blk
   >>= fun res ->
   Assert.proto_error ~loc:__LOC__ res (function
-      | Apply.Outdated_double_endorsement_evidence _ ->
+      | Cheating_proofs.Outdated_evidence _ ->
           true
       | _ ->
           false)
@@ -203,7 +203,7 @@ let different_delegates () =
   Block.bake ~operation blk_b
   >>= fun res ->
   Assert.proto_error ~loc:__LOC__ res (function
-      | Apply.Inconsistent_double_endorsement_evidence _ ->
+      | Cheating_proofs.Inconsistent_evidence _ ->
           true
       | _ ->
           false)

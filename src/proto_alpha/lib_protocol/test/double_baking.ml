@@ -105,7 +105,7 @@ let same_blocks () =
   Block.bake ~operation ba
   >>= fun res ->
   Assert.proto_error ~loc:__LOC__ res (function
-      | Apply.Invalid_double_baking_evidence _ ->
+      | Cheating_proofs.Invalid_double_baking_evidence _ ->
           true
       | _ ->
           false)
@@ -125,7 +125,7 @@ let different_levels () =
   Block.bake ~operation blk_a
   >>= fun res ->
   Assert.proto_error ~loc:__LOC__ res (function
-      | Apply.Invalid_double_baking_evidence _ ->
+      | Cheating_proofs.Invalid_double_baking_evidence _ ->
           true
       | _ ->
           false)
@@ -142,7 +142,7 @@ let too_early_double_baking_evidence () =
   Block.bake ~operation b
   >>= fun res ->
   Assert.proto_error ~loc:__LOC__ res (function
-      | Apply.Too_early_double_baking_evidence _ ->
+      | Cheating_proofs.Too_early_evidence _ ->
           true
       | _ ->
           false)
@@ -156,17 +156,14 @@ let too_late_double_baking_evidence () =
   >>=? fun Constants.{parametric = {preserved_cycles; _}; _} ->
   block_fork ~policy:(By_priority 0) contracts b
   >>=? fun (blk_a, blk_b) ->
-  fold_left_s
-    (fun blk _ -> Block.bake_until_cycle_end blk)
-    blk_a
-    (1 -- (preserved_cycles + 1))
+  Block.bake_until_n_cycle_end (preserved_cycles + 1) blk_a
   >>=? fun blk ->
   Op.double_baking (B blk) blk_a.header blk_b.header
   |> fun operation ->
   Block.bake ~operation blk
   >>= fun res ->
   Assert.proto_error ~loc:__LOC__ res (function
-      | Apply.Outdated_double_baking_evidence _ ->
+      | Cheating_proofs.Outdated_evidence _ ->
           true
       | _ ->
           false)
@@ -187,7 +184,7 @@ let different_delegates () =
   Block.bake ~operation blk_a
   >>= fun e ->
   Assert.proto_error ~loc:__LOC__ e (function
-      | Apply.Inconsistent_double_baking_evidence _ ->
+      | Cheating_proofs.Inconsistent_evidence _ ->
           true
       | _ ->
           false)
