@@ -137,6 +137,12 @@ module Raw_level : sig
   val to_int32 : raw_level -> int32
 
   val of_int32 : int32 -> raw_level tzresult
+
+  module LSet : sig
+    include S.SET with type elt = raw_level
+
+    val encoding : t Data_encoding.t
+  end
 end
 
 module Cycle : sig
@@ -1063,6 +1069,15 @@ module Delegate : sig
 
   val grace_period :
     context -> Signature.Public_key_hash.t -> Cycle.t tzresult Lwt.t
+
+  module Proof : sig
+    val mem : context -> public_key_hash -> Raw_level.t -> bool tzresult Lwt.t
+
+    val add :
+      context -> public_key_hash -> Raw_level.t -> context tzresult Lwt.t
+
+    val all : context -> public_key_hash -> Raw_level.LSet.t tzresult Lwt.t
+  end
 end
 
 module Voting_period : sig

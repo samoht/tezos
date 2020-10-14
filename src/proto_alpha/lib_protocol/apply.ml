@@ -65,6 +65,8 @@ type error +=
 
 type error += (* `Permanent *) Failing_noop_error
 
+type error += (* `Branch *) Double_injection_of_evidence
+
 type error += (* `Branch *) Unrequired_evidence
 
 let () =
@@ -254,6 +256,20 @@ let () =
     Data_encoding.empty
     (function Failing_noop_error -> Some () | _ -> None)
     (fun () -> Failing_noop_error) ;
+  register_error_kind
+    `Branch
+    ~id:"block.double_injection"
+    ~title:"Double injection of evidence is not permitted"
+    ~description:
+      "This evidence has already been used against that delegate and cannot \
+       be re-injected"
+    ~pp:(fun ppf () ->
+      Format.fprintf
+        ppf
+        "This evidence has already been used and cannot be re-injected")
+    Data_encoding.empty
+    (function Double_injection_of_evidence -> Some () | _ -> None)
+    (fun () -> Double_injection_of_evidence) ;
   register_error_kind
     `Temporary
     ~id:"block.unrequired_evidence"
@@ -937,6 +953,10 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
   | Single (Double_endorsement_evidence _ as evidence) ->
       Cheating_proofs.prove_double_endorsement ctxt chain_id evidence
       >>=? fun (level, delegate) ->
+      Delegate.Proof.mem ctxt delegate level.level
+      >>=? fun already_exists ->
+      fail_when already_exists Double_injection_of_evidence
+      >>=? fun () ->
       Delegate.has_frozen_balance ctxt delegate level.cycle
       >>=? fun valid ->
       fail_unless valid Unrequired_evidence
@@ -948,21 +968,26 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
       let reward =
         match Tez.(burned /? 2L) with Ok v -> v | Error _ -> Tez.zero
       in
-      Lwt.return
-        ( add_rewards ctxt reward
-        >|? fun ctxt ->
-        let current_cycle = (Level.current ctxt).cycle in
-        ( ctxt,
-          Single_result
-            (Double_endorsement_evidence_result
-               (Receipt.cleanup_balance_updates
-                  [ (Deposits (delegate, level.cycle), Debited balance.deposit);
-                    (Fees (delegate, level.cycle), Debited balance.fees);
-                    (Rewards (delegate, level.cycle), Debited balance.rewards);
-                    (Rewards (baker, current_cycle), Credited reward) ])) ) )
+      add_rewards ctxt reward
+      >>?= fun ctxt ->
+      Delegate.Proof.add ctxt delegate level.level
+      >|=? fun ctxt ->
+      let current_cycle = (Level.current ctxt).cycle in
+      ( ctxt,
+        Single_result
+          (Double_endorsement_evidence_result
+             (Receipt.cleanup_balance_updates
+                [ (Deposits (delegate, level.cycle), Debited balance.deposit);
+                  (Fees (delegate, level.cycle), Debited balance.fees);
+                  (Rewards (delegate, level.cycle), Debited balance.rewards);
+                  (Rewards (baker, current_cycle), Credited reward) ])) )
   | Single (Double_baking_evidence _ as evidence) ->
       Cheating_proofs.prove_double_baking ctxt chain_id evidence
       >>=? fun (level, delegate) ->
+      Delegate.Proof.mem ctxt delegate level.level
+      >>=? fun already_exists ->
+      fail_when already_exists Double_injection_of_evidence
+      >>=? fun () ->
       Delegate.has_frozen_balance ctxt delegate level.cycle
       >>=? fun valid ->
       fail_unless valid Unrequired_evidence
@@ -974,18 +999,19 @@ let apply_contents_list (type kind) ctxt chain_id mode pred_block baker
       let reward =
         match Tez.(burned /? 2L) with Ok v -> v | Error _ -> Tez.zero
       in
-      Lwt.return
-        ( add_rewards ctxt reward
-        >|? fun ctxt ->
-        let current_cycle = (Level.current ctxt).cycle in
-        ( ctxt,
-          Single_result
-            (Double_baking_evidence_result
-               (Receipt.cleanup_balance_updates
-                  [ (Deposits (delegate, level.cycle), Debited balance.deposit);
-                    (Fees (delegate, level.cycle), Debited balance.fees);
-                    (Rewards (delegate, level.cycle), Debited balance.rewards);
-                    (Rewards (baker, current_cycle), Credited reward) ])) ) )
+      add_rewards ctxt reward
+      >>?= fun ctxt ->
+      Delegate.Proof.add ctxt delegate level.level
+      >|=? fun ctxt ->
+      let current_cycle = (Level.current ctxt).cycle in
+      ( ctxt,
+        Single_result
+          (Double_baking_evidence_result
+             (Receipt.cleanup_balance_updates
+                [ (Deposits (delegate, level.cycle), Debited balance.deposit);
+                  (Fees (delegate, level.cycle), Debited balance.fees);
+                  (Rewards (delegate, level.cycle), Debited balance.rewards);
+                  (Rewards (baker, current_cycle), Credited reward) ])) )
   | Single (Activate_account {id = pkh; activation_code}) -> (
       let blinded_pkh =
         Blinded_public_key_hash.of_ed25519_pkh activation_code pkh

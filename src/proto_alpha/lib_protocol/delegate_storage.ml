@@ -401,6 +401,30 @@ let unfreeze ctxt delegate cycle =
           ( Contract (Contract_repr.implicit_contract delegate),
             Credited unfrozen_amount ) ] )
 
+module Proof = struct
+  module LSet = Raw_level_repr.LSet
+
+  let mem ctxt delegate level =
+    let contract = Contract_repr.implicit_contract delegate in
+    Storage.Contract.Proof_level.get_option ctxt contract
+    >|=? fun level_set ->
+    Option.(level_set >>| LSet.mem level |> value ~default:false)
+
+  let add ctxt delegate level =
+    let contract = Contract_repr.implicit_contract delegate in
+    Storage.Contract.Proof_level.get_option ctxt contract
+    >>=? fun proof_set_opt ->
+    let proof_set =
+      Option.value ~default:LSet.empty proof_set_opt |> LSet.add level
+    in
+    Storage.Contract.Proof_level.init_set ctxt contract proof_set >>= return
+
+  let all ctxt delegate =
+    Storage.Contract.Proof_level.get_option ctxt
+    @@ Contract_repr.implicit_contract delegate
+    >|=? fun level_set -> Option.value ~default:LSet.empty level_set
+end
+
 let cycle_end ctxt last_cycle unrevealed =
   let preserved = Constants_storage.preserved_cycles ctxt in
   ( match Cycle_repr.pred last_cycle with
