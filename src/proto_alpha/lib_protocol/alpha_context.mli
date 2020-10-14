@@ -1076,6 +1076,8 @@ module Delegate : sig
     val add :
       context -> public_key_hash -> Raw_level.t -> context tzresult Lwt.t
 
+    val cleanup : context -> context tzresult Lwt.t
+
     val all : context -> public_key_hash -> Raw_level.LSet.t tzresult Lwt.t
   end
 end

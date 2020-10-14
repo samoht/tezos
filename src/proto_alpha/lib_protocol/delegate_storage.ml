@@ -419,6 +419,18 @@ module Proof = struct
     in
     Storage.Contract.Proof_level.init_set ctxt contract proof_set >>= return
 
+  let cleanup ctxt =
+    let oldest_level = Level_storage.last_allowed_fork_level ctxt in
+    let f contract level_set ctxt =
+      Lwt.return ctxt
+      >>=? fun ctxt ->
+      Storage.Contract.Proof_level.set ctxt contract
+      @@ LSet.filter
+           (fun level -> Raw_level_repr.(level > oldest_level))
+           level_set
+    in
+    Storage.Contract.Proof_level.fold ctxt ~init:(ok ctxt) ~f
+
   let all ctxt delegate =
     Storage.Contract.Proof_level.get_option ctxt
     @@ Contract_repr.implicit_contract delegate
@@ -427,6 +439,8 @@ end
 
 let cycle_end ctxt last_cycle unrevealed =
   let preserved = Constants_storage.preserved_cycles ctxt in
+  Proof.cleanup ctxt
+  >>=? fun ctxt ->
   ( match Cycle_repr.pred last_cycle with
   | None ->
       return (ctxt, [])

@@ -190,6 +190,9 @@ module Proof : sig
     Raw_level_repr.t ->
     Raw_context.t tzresult Lwt.t
 
+  (** clean-up out-dated proofs of double baking and endorsement *)
+  val cleanup : Raw_context.t -> Raw_context.t tzresult Lwt.t
+
   val all :
     Raw_context.t ->
     Signature.Public_key_hash.t ->
