@@ -240,6 +240,34 @@ let wrong_delegate () =
       | _ ->
           false)
 
+(** inject proof twice in two different cycle *)
+let double_injection_double_endorsement_evidence () =
+  Context.init 2
+  >>=? fun (blk, _contracts) ->
+  block_fork blk
+  >>=? fun (blk_a, blk_b) ->
+  Context.get_endorser (B blk_a)
+  >>=? fun (delegate, _slots) ->
+  Op.endorsement ~delegate (B blk_a) ()
+  >>=? fun endorsement_a ->
+  Op.endorsement ~delegate (B blk_b) ()
+  >>=? fun endorsement_b ->
+  Block.bake ~operations:[Operation.pack endorsement_a] blk_a
+  >>=? fun blk_a ->
+  Op.double_endorsement (B blk_a) endorsement_a endorsement_b
+  |> fun evidence ->
+  Block.bake ~operation:evidence blk_a
+  >>=? fun blk ->
+  Block.bake_until_cycle_end blk
+  >>=? fun blk ->
+  Block.bake ~operation:evidence blk
+  >>= fun e ->
+  Assert.proto_error ~loc:__LOC__ e (function
+      | Apply.Double_injection_of_evidence ->
+          true
+      | _ ->
+          false)
+
 let tests =
   [ Test.tztest
       "valid double endorsement evidence"
@@ -258,4 +286,8 @@ let tests =
       `Quick
       too_late_double_endorsement_evidence;
     Test.tztest "different delegates" `Quick different_delegates;
-    Test.tztest "wrong delegate" `Quick wrong_delegate ]
+    Test.tztest "wrong delegate" `Quick wrong_delegate;
+    Test.tztest
+      "reject double injection of an evidence."
+      `Quick
+      double_injection_double_endorsement_evidence ]

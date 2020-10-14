@@ -214,6 +214,33 @@ let wrong_signer () =
       | _ ->
           false)
 
+(** Detect when an evidence is injected twice in two different cycles *)
+let double_injection_double_baking_evidence () =
+  Context.init 2
+  >>=? fun (blk, contracts) ->
+  Context.get_bakers (B blk)
+  >>=? fun bakers ->
+  let baker = List.hd bakers in
+  block_fork ~policy:(By_account baker) contracts blk
+  >>=? fun (blk_a, blk_b) ->
+  Block.bake_until_cycle_end blk_a
+  >>=? fun blk ->
+  Op.double_baking (B blk) blk_a.header blk_b.header
+  |> fun evidence ->
+  Block.bake ~policy:(Excluding [baker]) ~operation:evidence blk
+  >>=? fun blk ->
+  Block.bake_until_cycle_end blk
+  >>=? fun blk ->
+  Op.double_baking (B blk) blk_b.header blk_a.header
+  |> fun evidence ->
+  Block.bake ~policy:(Excluding [baker]) ~operation:evidence blk
+  >>= fun e ->
+  Assert.proto_error ~loc:__LOC__ e (function
+      | Apply.Double_injection_of_evidence ->
+          true
+      | _ ->
+          false)
+
 let tests =
   [ Test.tztest
       "valid double baking evidence"
@@ -231,4 +258,8 @@ let tests =
       `Quick
       too_late_double_baking_evidence;
     Test.tztest "different delegates" `Quick different_delegates;
-    Test.tztest "wrong delegate" `Quick wrong_signer ]
+    Test.tztest "wrong delegate" `Quick wrong_signer;
+    Test.tztest
+      "reject double injection of an evidence"
+      `Quick
+      double_injection_double_baking_evidence ]
