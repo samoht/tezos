@@ -268,6 +268,46 @@ let double_injection_double_endorsement_evidence () =
       | _ ->
           false)
 
+(** Previously unrequired evidence can be re-injected and slash the baker *)
+let unrequired_evidence_injected () =
+  Context.init 2
+  >>=? fun (blk, _contracts) ->
+  Context.get_endorser (B blk)
+  >>=? fun (delegate, _slots) ->
+  block_fork blk
+  >>=? fun (blk_a, blk_b) ->
+  Op.endorsement ~delegate (B blk_a) ()
+  >>=? fun endorsement_a ->
+  Op.endorsement ~delegate (B blk_b) ()
+  >>=? fun endorsement_b ->
+  Op.double_endorsement (B blk) endorsement_a endorsement_b
+  |> fun evidence ->
+  Block.bake blk
+  >>=? fun blk ->
+  block_fork blk
+  >>=? fun (blk_2_a, blk_2_b) ->
+  Op.endorsement ~delegate (B blk_2_a) ()
+  >>=? fun endorsement_2_a ->
+  Op.endorsement ~delegate (B blk_2_b) ()
+  >>=? fun endorsement_2_b ->
+  Op.double_endorsement (B blk) endorsement_2_a endorsement_2_b
+  |> fun evidence_2 ->
+  Block.bake ~policy:(By_account delegate) blk
+  >>=? fun blk ->
+  Block.bake ~policy:(Excluding [delegate]) ~operation:evidence blk
+  >>=? fun blk ->
+  Block.bake ~policy:(Excluding [delegate]) ~operation:evidence_2 blk
+  >>= fun e ->
+  Assert.proto_error ~loc:__LOC__ e (function
+      | Apply.Unrequired_evidence ->
+          true
+      | _ ->
+          false)
+  >>=? fun () ->
+  Block.bake ~policy:(By_account delegate) blk
+  >>=? fun blk ->
+  Block.bake ~policy:(Excluding [delegate]) ~operation:evidence_2 blk
+  >>=? fun _blk -> return_unit
 let tests =
   [ Test.tztest
       "valid double endorsement evidence"
@@ -290,4 +330,8 @@ let tests =
     Test.tztest
       "reject double injection of an evidence."
       `Quick
-      double_injection_double_endorsement_evidence ]
+      double_injection_double_endorsement_evidence;
+    Test.tztest
+      "inject previously unrequired evidence"
+      `Quick
+      unrequired_evidence_injected ]

@@ -241,6 +241,37 @@ let double_injection_double_baking_evidence () =
       | _ ->
           false)
 
+(** Previously unrequired evidence can be re-injected and slash the baker *)
+let unrequired_evidence_injected () =
+  Context.init 2
+  >>=? fun (blk, contracts) ->
+  Context.get_bakers (B blk)
+  >>=? fun bakers ->
+  let baker = List.hd bakers in
+  block_fork ~policy:(By_account baker) contracts blk
+  >>=? fun (blk_a, blk_b) ->
+  Op.double_baking (B blk_a) blk_a.header blk_b.header
+  |> fun evidence ->
+  Block.bake blk_a
+  >>=? fun blk ->
+  block_fork ~policy:(By_account baker) contracts blk
+  >>=? fun (blk_a, blk_b) ->
+  Op.double_baking (B blk_a) blk_a.header blk_b.header
+  |> fun evidence_2 ->
+  Block.bake ~policy:(Excluding [baker]) ~operation:evidence blk_a
+  >>=? fun blk ->
+  Block.bake ~policy:(Excluding [baker]) ~operation:evidence_2 blk
+  >>= fun e ->
+  Assert.proto_error ~loc:__LOC__ e (function
+      | Apply.Unrequired_evidence ->
+          true
+      | _ ->
+          false)
+  >>=? fun () ->
+  Block.bake ~policy:(By_account baker) blk
+  >>=? fun blk ->
+  Block.bake ~policy:(Excluding [baker]) ~operation:evidence_2 blk
+  >>=? fun _blk -> return_unit
 let tests =
   [ Test.tztest
       "valid double baking evidence"
@@ -262,4 +293,8 @@ let tests =
     Test.tztest
       "reject double injection of an evidence"
       `Quick
-      double_injection_double_baking_evidence ]
+      double_injection_double_baking_evidence;
+    Test.tztest
+      "inject previously unrequired evidence"
+      `Quick
+      unrequired_evidence_injected ]
