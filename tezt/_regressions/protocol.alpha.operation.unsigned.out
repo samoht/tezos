@@ -27,19 +27,24 @@ tezt/_regressions/protocol.alpha.operation.unsigned.out
       "source": "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx",
       "period": 719,
       "proposal": "PscqRYywd243M2eZspXZEJGsRmNchp4ZKfKmoyEZTRHeLQvVGjp",
-      "ballot": "yay"
+      "ballot": {
+        "yays_per_roll": 100,
+        "nays_per_roll": 0,
+        "passes_per_roll": 0
+      }
     }
   ]
 }'
-0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8060002298c03ed7d454a101eb7022bc95f7e5f41ac78000002cf7663cf120f3dc8189d5dc7d4d7a0483bcc53f3f18e700f5a2f5076aa8b9dc55c00
+0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8060002298c03ed7d454a101eb7022bc95f7e5f41ac78000002cf7663cf120f3dc8189d5dc7d4d7a0483bcc53f3f18e700f5a2f5076aa8b9dc55c640000
 
-./tezos-codec decode alpha.operation.unsigned from 0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8060002298c03ed7d454a101eb7022bc95f7e5f41ac78000002cf7663cf120f3dc8189d5dc7d4d7a0483bcc53f3f18e700f5a2f5076aa8b9dc55c00
+./tezos-codec decode alpha.operation.unsigned from 0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8060002298c03ed7d454a101eb7022bc95f7e5f41ac78000002cf7663cf120f3dc8189d5dc7d4d7a0483bcc53f3f18e700f5a2f5076aa8b9dc55c640000
 { "branch": "BKpbfCvh777DQHnXjU2sqHvVUNZ7dBAdqEfKkdw8EGSkD9LSYXb",
   "contents":
     [ { "kind": "ballot", "source": "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx",
         "period": 719,
         "proposal": "PscqRYywd243M2eZspXZEJGsRmNchp4ZKfKmoyEZTRHeLQvVGjp",
-        "ballot": "yay" } ] }
+        "ballot":
+          { "yays_per_roll": 100, "nays_per_roll": 0, "passes_per_roll": 0 } } ] }
 
 ./tezos-codec encode alpha.operation.unsigned from '{
   "branch": "BKpbfCvh777DQHnXjU2sqHvVUNZ7dBAdqEfKkdw8EGSkD9LSYXb",

@@ -1,19 +1,41 @@
 tezt/_regressions/protocol.alpha.vote.ballot.out
 
-./tezos-codec encode alpha.vote.ballot from '"nay"'
-01
+./tezos-codec encode alpha.vote.ballot from '{
+  "yays_per_roll": 0,
+  "nays_per_roll": 100,
+  "passes_per_roll": 0
+}'
+006400
 
-./tezos-codec decode alpha.vote.ballot from 01
-"nay"
+./tezos-codec decode alpha.vote.ballot from 006400
+{ "yays_per_roll": 0, "nays_per_roll": 100, "passes_per_roll": 0 }
 
-./tezos-codec encode alpha.vote.ballot from '"pass"'
-02
+./tezos-codec encode alpha.vote.ballot from '{
+  "yays_per_roll": 0,
+  "nays_per_roll": 0,
+  "passes_per_roll": 100
+}'
+000064
 
-./tezos-codec decode alpha.vote.ballot from 02
-"pass"
+./tezos-codec decode alpha.vote.ballot from 000064
+{ "yays_per_roll": 0, "nays_per_roll": 0, "passes_per_roll": 100 }
 
-./tezos-codec encode alpha.vote.ballot from '"yay"'
-00
+./tezos-codec encode alpha.vote.ballot from '{
+  "yays_per_roll": 20,
+  "nays_per_roll": 30,
+  "passes_per_roll": 50
+}'
+141e32
 
-./tezos-codec decode alpha.vote.ballot from 00
-"yay"
+./tezos-codec decode alpha.vote.ballot from 141e32
+{ "yays_per_roll": 20, "nays_per_roll": 30, "passes_per_roll": 50 }
+
+./tezos-codec encode alpha.vote.ballot from '{
+  "yays_per_roll": 100,
+  "nays_per_roll": 0,
+  "passes_per_roll": 0
+}'
+640000
+
+./tezos-codec decode alpha.vote.ballot from 640000
+{ "yays_per_roll": 100, "nays_per_roll": 0, "passes_per_roll": 0 }

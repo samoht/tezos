@@ -30,20 +30,25 @@ tezt/_regressions/protocol.alpha.operation.out
       "source": "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx",
       "period": 719,
       "proposal": "PscqRYywd243M2eZspXZEJGsRmNchp4ZKfKmoyEZTRHeLQvVGjp",
-      "ballot": "yay"
+      "ballot": {
+        "yays_per_roll": 100,
+        "nays_per_roll": 0,
+        "passes_per_roll": 0
+      }
     }
   ],
   "signature": "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ"
 }'
-0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8060002298c03ed7d454a101eb7022bc95f7e5f41ac78000002cf7663cf120f3dc8189d5dc7d4d7a0483bcc53f3f18e700f5a2f5076aa8b9dc55c0066804fe735e06e97e26da8236b6341b91c625d5e82b3524ec0a88cc982365e70f8a5b9bc65df2ea6d21ee244cc3a96fb33031c394c78b1179ff1b8a44237740c
+0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8060002298c03ed7d454a101eb7022bc95f7e5f41ac78000002cf7663cf120f3dc8189d5dc7d4d7a0483bcc53f3f18e700f5a2f5076aa8b9dc55c64000066804fe735e06e97e26da8236b6341b91c625d5e82b3524ec0a88cc982365e70f8a5b9bc65df2ea6d21ee244cc3a96fb33031c394c78b1179ff1b8a44237740c
 
-./tezos-codec decode alpha.operation from 0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8060002298c03ed7d454a101eb7022bc95f7e5f41ac78000002cf7663cf120f3dc8189d5dc7d4d7a0483bcc53f3f18e700f5a2f5076aa8b9dc55c0066804fe735e06e97e26da8236b6341b91c625d5e82b3524ec0a88cc982365e70f8a5b9bc65df2ea6d21ee244cc3a96fb33031c394c78b1179ff1b8a44237740c
+./tezos-codec decode alpha.operation from 0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8060002298c03ed7d454a101eb7022bc95f7e5f41ac78000002cf7663cf120f3dc8189d5dc7d4d7a0483bcc53f3f18e700f5a2f5076aa8b9dc55c64000066804fe735e06e97e26da8236b6341b91c625d5e82b3524ec0a88cc982365e70f8a5b9bc65df2ea6d21ee244cc3a96fb33031c394c78b1179ff1b8a44237740c
 { "branch": "BKpbfCvh777DQHnXjU2sqHvVUNZ7dBAdqEfKkdw8EGSkD9LSYXb",
   "contents":
     [ { "kind": "ballot", "source": "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx",
         "period": 719,
         "proposal": "PscqRYywd243M2eZspXZEJGsRmNchp4ZKfKmoyEZTRHeLQvVGjp",
-        "ballot": "yay" } ],
+        "ballot":
+          { "yays_per_roll": 100, "nays_per_roll": 0, "passes_per_roll": 0 } } ],
   "signature":
     "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ" }
 

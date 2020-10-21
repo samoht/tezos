@@ -1,1 +1,5 @@
-"nay"
+{
+    "yays_per_roll": 0,
+    "nays_per_roll": 100,
+    "passes_per_roll": 0
+}
