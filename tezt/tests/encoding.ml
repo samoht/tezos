@@ -72,6 +72,29 @@ let check_sample ~name ~file =
       (JSON.encode decoded_json) ;
   return ()
 
+let check_invalid_sample ~name ~file =
+  (* TODO use Base.read_file once merged in
+     https://gitlab.com/tezos/tezos/-/merge_requests/2096 *)
+  let* contents = Tezos_stdlib_unix.Lwt_utils_unix.read_file file in
+  if Filename.extension file = ".json" then
+    let json = JSON.parse ~origin:contents contents in
+    let encode_process = Codec.spawn_encode ~name (JSON.unannotate json) in
+    let* stderr =
+      Process.check_and_read_stderr ~expect_failure:true encode_process
+    in
+    if stderr =~! rex "Error" then
+      Test.fail "command failed with an unexpected error message"
+    else unit
+  else
+    let binary = String.trim contents in
+    let decode_process = Codec.spawn_decode ~name binary in
+    let* stderr =
+      Process.check_and_read_stderr ~expect_failure:true decode_process
+    in
+    if stderr =~! rex "Error" then
+      Test.fail "command failed with an unexpected error message"
+    else unit
+
 (** The given samples must be included in registered encodings. These can be
     found with [tezos-codec list encodings]. *)
 let check_samples_encoding ~group_name ~samples =
@@ -89,6 +112,24 @@ let check_samples_encoding ~group_name ~samples =
       Sys.readdir base_path |> Array.to_list |> List.sort String.compare
       |> Lwt_list.iter_s (fun file ->
              check_sample ~name:sample ~file:(base_path // file)))
+    samples
+
+(** The given samples must be included in registered encodings. These can be
+    found with [tezos-codec list encodings]. *)
+let check_invalid_samples_encoding ~group_name ~samples =
+  List.iter
+    (fun sample ->
+      Test.register
+        ~__FILE__
+        ~title:(sf "%s invalid encoding test: %s" group_name sample)
+        ~tags:["encoding"; "invalid"; group_name]
+      @@ fun () ->
+      let base_path =
+        "tezt" // "tests" // "invalid_encoding_samples" // group_name // sample
+      in
+      Sys.readdir base_path |> Array.to_list |> List.sort String.compare
+      |> Lwt_list.iter_s (fun file ->
+             check_invalid_sample ~name:sample ~file:(base_path // file)))
     samples
 
 let register () =
@@ -124,4 +165,7 @@ let register () =
         "alpha.vote.ballots";
         "alpha.vote.listings";
         "alpha.voting_period.kind";
-        "alpha.voting_period" ]
+        "alpha.voting_period" ] ;
+  check_invalid_samples_encoding
+    ~group_name:"protocol"
+    ~samples:["alpha.vote.ballot"]
