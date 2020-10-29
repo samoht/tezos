@@ -130,3 +130,12 @@ let print_balances ctxt id =
     (Alpha_context.Tez.to_string deposit)
     (Alpha_context.Tez.to_string fees)
     (Alpha_context.Tez.to_string rewards)
+
+let fail ~loc expected given msg =
+  failwith "@[@[%s]@] - %s@ expected: %s@ got: %s@]" loc msg expected given
+
+let is_none ~loc ?(msg = "") x =
+  if x <> None then fail ~loc "None" "Some _" msg else return_unit
+
+let is_some ~loc ?(msg = "") x =
+  if x = None then fail ~loc "Some _" "None" msg else return_unit

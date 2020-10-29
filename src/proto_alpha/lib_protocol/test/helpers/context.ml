@@ -211,12 +211,16 @@ module Vote = struct
 end
 
 module Contract = struct
+  type info = Alpha_services.Contract.info
+
   let pp = Alpha_context.Contract.pp
 
   let pkh c =
     Alpha_context.Contract.is_implicit c
     |> function
     | Some p -> return p | None -> failwith "pkh: only for implicit contracts"
+
+  let info ctxt contract = Alpha_services.Contract.info rpc_ctxt ctxt contract
 
   type balance_kind = Main | Deposit | Fees | Rewards
 

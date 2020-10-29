@@ -89,7 +89,11 @@ module Vote : sig
 end
 
 module Contract : sig
+  type info = Alpha_services.Contract.info
+
   val pp : Format.formatter -> Contract.t -> unit
+
+  val info : t -> Contract.t -> info tzresult Lwt.t
 
   val pkh : Contract.t -> public_key_hash tzresult Lwt.t
 

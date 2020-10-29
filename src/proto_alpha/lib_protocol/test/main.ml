@@ -49,5 +49,6 @@ let () =
       ("sapling", Test_sapling.tests);
       ("helpers rpcs", Test_helpers_rpcs.tests);
       ("script deserialize gas", Script_gas.tests);
-      ("Failing_noop", Failing_noop.tests) ]
+      ("Failing_noop", Failing_noop.tests);
+      ("contract", Contract.tests) ]
   |> Lwt_main.run
