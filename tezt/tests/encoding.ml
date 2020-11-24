@@ -102,7 +102,7 @@ let register () =
         "alpha.contract";
         "alpha.contract.big_map_diff";
         "alpha.cycle";
-        "alpha.delegate.balance_updates";
+        "alpha.receipt.balance_updates";
         "alpha.delegate.frozen_balance";
         "alpha.delegate.frozen_balance_by_cycles";
         "alpha.fitness";
