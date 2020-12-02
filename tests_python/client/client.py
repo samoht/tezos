@@ -164,9 +164,10 @@ class Client:
             params: List[str],
             admin: bool = False,
             check: bool = True,
-            trace: bool = False) -> str:
+            trace: bool = False,
+            stdin: str = "") -> str:
         """Like 'run_generic' but returns just stdout."""
-        (stdout, _, _) = self.run_generic(params, admin, check, trace)
+        (stdout, _, _) = self.run_generic(params, admin, check, trace, stdin)
         return stdout
 
     def rpc(self,
@@ -1092,4 +1093,14 @@ class Client:
                                  accept: bool) -> str:
         accept_str = 'accepting' if accept else 'declining'
         cmd = ['set', 'baker', account, accept_str, 'new', 'delegations']
+        return self.run(cmd)
+
+    def gen_pvss_keys(self, alias: str, pwd: str = 'password') -> str:
+        cmd = ['pvss', 'gen', 'keys', alias]
+        # password and password confirmation
+        stdin = f'{pwd}\n{pwd}\n'
+        return self.run(cmd, stdin=stdin)
+
+    def set_baker_pvss(self, account: str, key_alias: str) -> str:
+        cmd = ['set', 'baker', account, 'pvss', 'to', key_alias]
         return self.run(cmd)
