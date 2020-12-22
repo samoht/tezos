@@ -106,15 +106,16 @@ end = struct
                Error_monad.pp_print_error
                err))
 
-  let short_hash_string  = Irmin.Type.(unstage (short_hash string))
+  let short_hash_string = Irmin.Type.(unstage (short_hash string))
 
   let short_hash =
-    Irmin.Type.stage @@ fun ?seed t ->
-    short_hash_string ?seed (H.to_raw_string t)
+    Irmin.Type.stage
+    @@ fun ?seed t -> short_hash_string ?seed (H.to_raw_string t)
 
   let t : t Irmin.Type.t =
     Irmin.Type.map
-      ~pp ~of_string
+      ~pp
+      ~of_string
       Irmin.Type.(string_of (`Fixed H.digest_size))
       ~short_hash
       H.of_raw_string
@@ -244,7 +245,7 @@ type index = {
   path : string;
   repo : Store.Repo.t;
   patch_context : (context -> context tzresult Lwt.t) option;
-  readonly: bool;
+  readonly : bool;
 }
 
 and context = {index : index; parents : Store.Commit.t list; tree : Store.tree}
@@ -282,12 +283,12 @@ let restore_integrity ?ppf index =
 let syncs index = Store.sync index.repo
 
 let exists index key =
-  if index.readonly then syncs index;
+  if index.readonly then syncs index ;
   Store.Commit.of_hash index.repo (Hash.of_context_hash key)
   >|= function None -> false | Some _ -> true
 
 let checkout index key =
-  if index.readonly then syncs index;
+  if index.readonly then syncs index ;
   Store.Commit.of_hash index.repo (Hash.of_context_hash key)
   >>= function
   | None ->
@@ -378,13 +379,33 @@ let remove_rec ctxt key =
   Store.Tree.remove ctxt.tree (data_key key)
   >>= fun tree -> Lwt.return {ctxt with tree}
 
+type cursor = Store.tree
+
+let get_cursor ctxt key = Store.Tree.get_tree ctxt.tree (data_key key)
+
+let set_cursor ctxt key tree =
+  Store.Tree.add_tree ctxt.tree (data_key key) tree
+  >|= fun tree -> {ctxt with tree}
+
+module Cursor = struct
+  let empty _ = Store.Tree.empty
+
+  let get tree k = Store.Tree.find tree k >|= Option.map Bytes.of_string
+
+  let set tree k v = Store.Tree.add tree k (Bytes.to_string v)
+
+  let get_cursor tree k = Store.Tree.get_tree tree k
+
+  let set_cursor tree k v = Store.Tree.add_tree tree k v
+end
+
 let copy ctxt ~from ~to_ =
   Store.Tree.find_tree ctxt.tree (data_key from)
   >>= function
   | None ->
       Lwt.return_none
-  | Some sub_tree ->
-      Store.Tree.add_tree ctxt.tree (data_key to_) sub_tree
+  | Some from ->
+      Cursor.set_cursor ctxt.tree to_ from
       >>= fun tree -> Lwt.return_some {ctxt with tree}
 
 type key_or_dir = [`Key of key | `Dir of key]
@@ -404,6 +425,24 @@ let fold ctxt key ~init ~f =
       f key acc)
     init
     keys
+
+let fold_rec ?depth ctxt root ~init ~f =
+  let depth = match depth with None -> None | Some i -> Some (`Eq i) in
+  Store.Tree.find_tree ctxt.tree (data_key root)
+  >>= function
+  | None ->
+      Lwt.return init
+  | Some tree ->
+      Store.Tree.fold
+        ?depth
+        ~force:`And_clear
+        ~uniq:`False
+        ~node:(fun k v acc -> f k (Store.Tree.of_node v) acc)
+        ~contents:(fun k v acc -> f k (Store.Tree.of_contents v) acc)
+        tree
+        init
+
+let () = Printexc.record_backtrace true
 
 (*-- Predefined Fields -------------------------------------------------------*)
 
@@ -494,7 +533,7 @@ let set_predecessor_ops_metadata_hash v hash =
 
 (*-- Initialisation ----------------------------------------------------------*)
 
-let init ?patch_context ?mapsize:_ ?(readonly=false) root =
+let init ?patch_context ?mapsize:_ ?(readonly = false) root =
   Store.Repo.v
     (Irmin_pack.config ~readonly ?index_log_size:!index_log_size root)
   >>= fun repo ->
@@ -1034,7 +1073,7 @@ let validate_context_hash_consistency_and_commit ~data_hash
     Irmin.Info.v ~date:(Time.Protocol.to_seconds timestamp) ~author message
   in
   let data_tree = Store.Tree.shallow index.repo data_hash in
-  Store.Tree.add_tree tree ["data"] data_tree
+  Store.Tree.add_tree tree current_data_key data_tree
   >>= fun node ->
   let node = Store.Tree.hash node in
   let commit = P.Commit.Val.v ~parents ~node ~info in

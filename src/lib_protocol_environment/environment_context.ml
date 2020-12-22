@@ -53,6 +53,66 @@ module type CONTEXT = sig
 
   val fork_test_chain :
     t -> protocol:Protocol_hash.t -> expiration:Time.Protocol.t -> t Lwt.t
+
+  type cursor
+
+  val get_cursor : t -> key -> cursor Lwt.t
+
+  val set_cursor : t -> key -> cursor -> t Lwt.t
+
+  val fold_rec :
+    ?depth:int ->
+    t ->
+    key ->
+    init:'a ->
+    f:(key -> cursor -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
+
+  module Cursor : sig
+    val empty : t -> cursor
+
+    val get : cursor -> key -> value option Lwt.t
+
+    val set : cursor -> key -> value -> cursor Lwt.t
+
+    val get_cursor : cursor -> key -> cursor Lwt.t
+
+    val set_cursor : cursor -> key -> cursor -> cursor Lwt.t
+  end
+end
+
+module Witness : sig
+  type (_, _) eq = Refl : ('a, 'a) eq
+
+  type 'a t
+
+  val make : unit -> 'a t
+
+  val eq : 'a t -> 'b t -> ('a, 'b) eq option
+end = struct
+  type (_, _) eq = Refl : ('a, 'a) eq
+
+  type _ equality = ..
+
+  module type Inst = sig
+    type t
+
+    type _ equality += Eq : t equality
+  end
+
+  type 'a t = (module Inst with type t = 'a)
+
+  let make : type a. unit -> a t =
+   fun () ->
+    let module Inst = struct
+      type t = a
+
+      type _ equality += Eq : t equality
+    end in
+    (module Inst)
+
+  let eq : type a b. a t -> b t -> (a, b) eq option =
+   fun (module A) (module B) -> match A.Eq with B.Eq -> Some Refl | _ -> None
 end
 
 module Context = struct
@@ -60,49 +120,110 @@ module Context = struct
 
   type value = Bytes.t
 
-  type 'ctxt ops = (module CONTEXT with type t = 'ctxt)
+  type ('ctxt, 'cursor) ops =
+    (module CONTEXT with type t = 'ctxt and type cursor = 'cursor)
 
   type _ kind = ..
 
-  type t = Context : {kind : 'a kind; ctxt : 'a; ops : 'a ops} -> t
+  type ('a, 'b) witness = 'a Witness.t * 'b Witness.t
+
+  let witness () = (Witness.make (), Witness.make ())
+
+  let equal (a, b) (c, d) = (Witness.eq a c, Witness.eq b d)
+
+  type t =
+    | Context : {
+        kind : 'a kind;
+        ctxt : 'a;
+        ops : ('a, 'b) ops;
+        wit : ('a, 'b) witness;
+      }
+        -> t
 
   let mem (Context {ops = (module Ops); ctxt; _}) key = Ops.mem ctxt key
 
-  let set (Context {ops = (module Ops) as ops; ctxt; kind}) key value =
-    Ops.set ctxt key value
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
+  let set (Context ({ops = (module Ops); ctxt; _} as c)) key value =
+    Ops.set ctxt key value >>= fun ctxt -> Lwt.return (Context {c with ctxt})
 
   let dir_mem (Context {ops = (module Ops); ctxt; _}) key =
     Ops.dir_mem ctxt key
 
   let get (Context {ops = (module Ops); ctxt; _}) key = Ops.get ctxt key
 
-  let copy (Context {ops = (module Ops) as ops; ctxt; kind}) ~from ~to_ =
+  let copy (Context ({ops = (module Ops); ctxt; _} as c)) ~from ~to_ =
     Ops.copy ctxt ~from ~to_
     >>= function
     | Some ctxt ->
-        Lwt.return_some (Context {ops; ctxt; kind})
+        Lwt.return_some (Context {c with ctxt})
     | None ->
         Lwt.return_none
 
-  let remove_rec (Context {ops = (module Ops) as ops; ctxt; kind}) key =
-    Ops.remove_rec ctxt key
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
+  let remove_rec (Context ({ops = (module Ops); ctxt; _} as c)) key =
+    Ops.remove_rec ctxt key >>= fun ctxt -> Lwt.return (Context {c with ctxt})
 
   type key_or_dir = [`Key of key | `Dir of key]
 
   let fold (Context {ops = (module Ops); ctxt; _}) key ~init ~f =
     Ops.fold ctxt key ~init ~f
 
-  let set_protocol (Context {ops = (module Ops) as ops; ctxt; kind})
-      protocol_hash =
+  let set_protocol (Context ({ops = (module Ops); ctxt; _} as c)) protocol_hash
+      =
     Ops.set_protocol ctxt protocol_hash
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
+    >>= fun ctxt -> Lwt.return (Context {c with ctxt})
 
-  let fork_test_chain (Context {ops = (module Ops) as ops; ctxt; kind})
-      ~protocol ~expiration =
+  let fork_test_chain (Context ({ops = (module Ops); ctxt; _} as c)) ~protocol
+      ~expiration =
     Ops.fork_test_chain ctxt ~protocol ~expiration
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
+    >>= fun ctxt -> Lwt.return (Context {c with ctxt})
+
+  type cursor =
+    | Cursor : {
+        ops : ('a, 'b) ops;
+        cursor : 'b;
+        wit : ('a, 'b) witness;
+      }
+        -> cursor
+
+  let get_cursor (Context {ops = (module Ops) as ops; ctxt; wit; _}) key =
+    Ops.get_cursor ctxt key >|= fun cursor -> Cursor {ops; wit; cursor}
+
+  let set_cursor (Context ({ops = (module Ops); ctxt; _} as c)) key
+      (Cursor {cursor; wit; _}) =
+    match equal c.wit wit with
+    | (Some Refl, Some Refl) ->
+        Ops.set_cursor ctxt key cursor >|= fun ctxt -> Context {c with ctxt}
+    | _ ->
+        assert false
+
+  let fold_rec ?depth (Context {ops = (module Ops) as ops; ctxt; wit; _}) key
+      ~init ~f =
+    Ops.fold_rec ctxt ?depth key ~init ~f:(fun k cursor acc ->
+        let cursor = Cursor {ops; wit; cursor} in
+        f k cursor acc)
+
+  module Cursor = struct
+    let empty (Context {ops = (module Ops) as ops; ctxt; wit; _}) =
+      Cursor {ops; wit; cursor = Ops.Cursor.empty ctxt}
+
+    let get_cursor (Cursor {ops = (module Ops) as ops; cursor; wit; _}) key =
+      Ops.Cursor.get_cursor cursor key
+      >|= fun cursor -> Cursor {ops; wit; cursor}
+
+    let get (Cursor {ops = (module Ops); cursor; _}) key =
+      Ops.Cursor.get cursor key
+
+    let set (Cursor {ops = (module Ops) as ops; cursor; wit; _}) key v =
+      Ops.Cursor.set cursor key v >|= fun cursor -> Cursor {ops; wit; cursor}
+
+    let set_cursor (Cursor {ops = (module Ops) as ops; cursor; wit; _}) key
+        (Cursor {cursor = v; wit = wit2; _}) =
+      match equal wit wit2 with
+      | (Some Refl, Some Refl) ->
+          Ops.Cursor.set_cursor cursor key v
+          >|= fun cursor -> Cursor {ops; wit; cursor}
+      | _ ->
+          assert false
+  end
 end
 
 type validation_result = {

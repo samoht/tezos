@@ -51,14 +51,52 @@ module type CONTEXT = sig
 
   val fork_test_chain :
     t -> protocol:Protocol_hash.t -> expiration:Time.Protocol.t -> t Lwt.t
+
+  type cursor
+
+  val get_cursor : t -> key -> cursor Lwt.t
+
+  val set_cursor : t -> key -> cursor -> t Lwt.t
+
+  val fold_rec :
+    ?depth:int ->
+    t ->
+    key ->
+    init:'a ->
+    f:(key -> cursor -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
+
+  module Cursor : sig
+    val empty : t -> cursor
+
+    val get : cursor -> key -> value option Lwt.t
+
+    val set : cursor -> key -> value -> cursor Lwt.t
+
+    val get_cursor : cursor -> key -> cursor Lwt.t
+
+    val set_cursor : cursor -> key -> cursor -> cursor Lwt.t
+  end
 end
 
 module Context : sig
-  type 'ctxt ops = (module CONTEXT with type t = 'ctxt)
+  type ('ctxt, 'cursor) ops =
+    (module CONTEXT with type t = 'ctxt and type cursor = 'cursor)
 
   type _ kind = ..
 
-  type t = Context : {kind : 'a kind; ctxt : 'a; ops : 'a ops} -> t
+  type ('a, 'b) witness
+
+  val witness : unit -> ('a, 'b) witness
+
+  type t =
+    | Context : {
+        kind : 'a kind;
+        ctxt : 'a;
+        ops : ('a, 'b) ops;
+        wit : ('a, 'b) witness;
+      }
+        -> t
 
   include CONTEXT with type t := t
 end

@@ -252,6 +252,32 @@ module type T = sig
   val check_enough_gas : context -> Gas_limit_repr.cost -> unit tzresult
 
   val description : context Storage_description.t
+
+  type cursor
+
+  val get_cursor : t -> key -> cursor Lwt.t
+
+  val set_cursor : context -> key -> cursor -> context Lwt.t
+
+  val fold_rec :
+    ?depth:int ->
+    context ->
+    key ->
+    init:'a ->
+    f:(key -> cursor -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
+
+  module Cursor : sig
+    val empty : t -> cursor
+
+    val get : cursor -> key -> value option Lwt.t
+
+    val set : cursor -> key -> value -> cursor Lwt.t
+
+    val get_cursor : cursor -> key -> cursor Lwt.t
+
+    val set_cursor : cursor -> key -> cursor -> cursor Lwt.t
+  end
 end
 
 include T with type t := t and type context := context

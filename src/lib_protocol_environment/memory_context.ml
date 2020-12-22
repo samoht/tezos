@@ -103,34 +103,82 @@ module M = struct
     | Some m ->
         Lwt.return m
 
+  type cursor = t
+
+  let empty_cursor = Dir StringMap.empty
+
+  let get_cursor m k =
+    match raw_get m k with
+    | None ->
+        Lwt.return empty_cursor
+    | Some c ->
+        Lwt.return c
+
+  let set_cursor m k c =
+    match raw_set m k (Some c) with
+    | None ->
+        Lwt.return m
+    | Some m ->
+        Lwt.return m
+
   let remove_rec m k =
     match raw_set m k None with None -> Lwt.return m | Some m -> Lwt.return m
+
+  module Cursor = struct
+    let empty _ = empty_cursor
+
+    let get m k =
+      match raw_get m k with
+      | Some (Key v) ->
+          Lwt.return (Some v)
+      | _ ->
+          Lwt.return None
+
+    let set m k v =
+      match raw_set m k (Some (Key v)) with
+      | None ->
+          Lwt.return m
+      | Some m ->
+          Lwt.return m
+
+    let get_cursor m k =
+      match raw_get m k with
+      | None ->
+          Lwt.return (empty ())
+      | Some c ->
+          Lwt.return c
+
+    let set_cursor m k c =
+      let pp_path =
+        Format.(
+          pp_print_list
+            ~pp_sep:(fun ppf () -> pp_print_string ppf " / ")
+            pp_print_string)
+      in
+      match raw_set m k (Some c) with
+      | Some v ->
+          Lwt.return v
+      | None ->
+          Format.kasprintf
+            Lwt.fail_with
+            "Mem_context.copy %a: The value is already set."
+            pp_path
+            k
+      | exception Failure s ->
+          Format.kasprintf
+            Lwt.fail_with
+            "Mem_context.copy %a: Failed with %s"
+            pp_path
+            k
+            s
+  end
 
   let copy m ~from ~to_ =
     match raw_get m from with
     | None ->
         Lwt.return_none
-    | Some v -> (
-      match raw_set m to_ (Some v) with
-      | Some _ as v ->
-          Lwt.return v
-      | None ->
-          Format.kasprintf
-            Lwt.fail_with
-            "Mem_context.copy %a %a: The value is already set."
-            pp_key
-            from
-            pp_key
-            to_
-      | exception Failure s ->
-          Format.kasprintf
-            Lwt.fail_with
-            "Mem_context.copy %a %a: Failed with %s"
-            pp_key
-            from
-            pp_key
-            to_
-            s )
+    | Some v ->
+        Cursor.set_cursor m to_ v >|= fun c -> Some c
 
   type key_or_dir = [`Key of key | `Dir of key]
 
@@ -152,6 +200,8 @@ module M = struct
                 f (`Dir (k @ [n])) acc)
           m
           (Lwt.return init)
+
+  let fold_rec ?depth:_ _m _k ~init:_ ~f:_ = assert false
 
   let current_protocol_key = ["protocol"]
 
@@ -191,18 +241,20 @@ type t = M.t
 
 type _ Context.kind += Memory : t Context.kind
 
-let ops = (module M : CONTEXT with type t = 'ctxt)
+let ops = (module M : CONTEXT with type t = 'ctxt and type cursor = 'cursor)
+
+let wit = Context.witness ()
 
 let empty =
   let ctxt = M.empty in
-  Context.Context {ops; ctxt; kind = Memory}
+  Context.Context {ops; ctxt; kind = Memory; wit}
 
 let project : Context.t -> t =
  fun (Context.Context {ctxt; kind; _} : Context.t) ->
   match kind with Memory -> ctxt | _ -> assert false
 
 let inject : t -> Context.t =
- fun ctxt -> Context.Context {ops; ctxt; kind = Memory}
+ fun ctxt -> Context.Context {ops; ctxt; kind = Memory; wit}
 
 let encoding : Context.t Data_encoding.t =
   let open Data_encoding in

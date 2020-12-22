@@ -858,6 +858,32 @@ module type T = sig
   val check_enough_gas : context -> Gas_limit_repr.cost -> unit tzresult
 
   val description : context Storage_description.t
+
+  type cursor
+
+  val get_cursor : t -> key -> cursor Lwt.t
+
+  val set_cursor : context -> key -> cursor -> context Lwt.t
+
+  val fold_rec :
+    ?depth:int ->
+    context ->
+    key ->
+    init:'a ->
+    f:(key -> cursor -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
+
+  module Cursor : sig
+    val empty : t -> cursor
+
+    val get : cursor -> key -> value option Lwt.t
+
+    val set : cursor -> key -> value -> cursor Lwt.t
+
+    val get_cursor : cursor -> key -> cursor Lwt.t
+
+    val set_cursor : cursor -> key -> cursor -> cursor Lwt.t
+  end
 end
 
 let mem ctxt k = Context.mem (context ctxt) k
@@ -924,6 +950,28 @@ let copy ctxt ~from ~to_ =
       ok (update_context ctxt context)
 
 let fold ctxt k ~init ~f = Context.fold (context ctxt) k ~init ~f
+
+type cursor = Context.cursor
+
+let get_cursor ctxt key = Context.get_cursor (context ctxt) key
+
+let set_cursor ctxt key c =
+  Context.set_cursor (context ctxt) key c >|= update_context ctxt
+
+let fold_rec ?depth ctxt k ~init ~f =
+  Context.fold_rec ?depth (context ctxt) k ~init ~f
+
+module Cursor = struct
+  let empty ctxt = Context.Cursor.empty (context ctxt)
+
+  let set = Context.Cursor.set
+
+  let get = Context.Cursor.get
+
+  let set_cursor = Context.Cursor.set_cursor
+
+  let get_cursor = Context.Cursor.get_cursor
+end
 
 let keys ctxt k = Context.keys (context ctxt) k
 

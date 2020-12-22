@@ -49,12 +49,33 @@ module M = struct
   let set_protocol _ _ = assert false
 
   let fork_test_chain _ ~protocol:_ ~expiration:_ = assert false
+
+  type cursor = unit
+
+  let get_cursor _ _ = assert false
+
+  let set_cursor _ _ _ = assert false
+
+  let fold_rec ?depth:_ _ _ ~init:_ ~f:_ = assert false
+
+  module Cursor = struct
+    let empty _ = ()
+
+    let get _ _ = assert false
+
+    let set _ _ _ = assert false
+
+    let get_cursor _ _ = assert false
+
+    let set_cursor _ _ _ = assert false
+  end
 end
 
 open Tezos_protocol_environment
 
 type _ Context.kind += Faked : unit Context.kind
 
-let ops = (module M : CONTEXT with type t = 'ctxt)
+let ops = (module M : CONTEXT with type t = 'ctxt and type cursor = 'cursor)
 
-let empty = Context.Context {ops; ctxt = (); kind = Faked}
+let empty =
+  Context.Context {ops; ctxt = (); kind = Faked; wit = Context.witness ()}
