@@ -378,14 +378,23 @@ let remove_rec ctxt key =
   Store.Tree.remove ctxt.tree (data_key key)
   >>= fun tree -> Lwt.return {ctxt with tree}
 
+type cursor = Store.tree
+
+let empty_cursor _ = Store.Tree.empty
+
+let set_cursor ctxt key tree =
+  Store.Tree.add_tree ctxt.tree (data_key key) tree
+  >|= fun tree -> { ctxt with tree }
+
+let copy_cursor tree ~from ~to_ = Store.Tree.add_tree tree to_ from
+
 let copy ctxt ~from ~to_ =
   Store.Tree.find_tree ctxt.tree (data_key from)
   >>= function
-  | None ->
-      Lwt.return_none
-  | Some sub_tree ->
-      Store.Tree.add_tree ctxt.tree (data_key to_) sub_tree
-      >>= fun tree -> Lwt.return_some {ctxt with tree}
+  | None -> Lwt.return_none
+  | Some from ->
+     copy_cursor ctxt.tree ~from ~to_
+     >>= fun tree -> Lwt.return_some { ctxt with tree }
 
 type key_or_dir = [`Key of key | `Dir of key]
 
@@ -404,6 +413,19 @@ let fold ctxt key ~init ~f =
       f key acc)
     init
     keys
+
+let fold_rec ?depth ctxt root ~init ~f =
+  let depth = match depth with None -> None | Some i -> Some (`Eq i) in
+  Store.Tree.find_tree ctxt.tree (data_key root) >>= function
+  | None -> Lwt.return init
+  | Some tree ->
+     Store.Tree.fold ?depth ~force:`And_clear ~uniq:`False
+       ~node:(fun k v acc -> f k (Store.Tree.of_node v) acc)
+       ~contents:(fun k v acc -> f k (Store.Tree.of_contents v) acc)
+       tree
+       init
+
+let () = Printexc.record_backtrace true
 
 (*-- Predefined Fields -------------------------------------------------------*)
 
@@ -1034,7 +1056,7 @@ let validate_context_hash_consistency_and_commit ~data_hash
     Irmin.Info.v ~date:(Time.Protocol.to_seconds timestamp) ~author message
   in
   let data_tree = Store.Tree.shallow index.repo data_hash in
-  Store.Tree.add_tree tree ["data"] data_tree
+  Store.Tree.add_tree tree current_data_key data_tree
   >>= fun node ->
   let node = Store.Tree.hash node in
   let commit = P.Commit.Val.v ~parents ~node ~info in
