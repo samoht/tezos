@@ -73,12 +73,6 @@ module Make_subcontext (R : REGISTER) (C : Raw_context.T) (N : NAME) :
 
   type context = t
 
-  type cursor = C.cursor
-
-  let empty_cursor = C.empty_cursor
-
-  let copy_cursor = C.copy_cursor
-
   let name_length = List.length N.name
 
   let to_key k = N.name @ k
@@ -107,11 +101,6 @@ module Make_subcontext (R : REGISTER) (C : Raw_context.T) (N : NAME) :
 
   let remove_rec t k = C.remove_rec t (to_key k)
 
-  let set_cursor t k = C.set_cursor t (to_key k)
-
-  let fold_rec ?depth t k ~init ~f =
-    C.fold_rec ?depth t (to_key k) ~init ~f:(fun k v acc -> f (of_key k) v acc)
-
   let copy t ~from ~to_ = C.copy t ~from:(to_key from) ~to_:(to_key to_)
 
   let fold t k ~init ~f =
@@ -135,6 +124,27 @@ module Make_subcontext (R : REGISTER) (C : Raw_context.T) (N : NAME) :
       if R.ghost then Storage_description.create () else C.description
     in
     Storage_description.register_named_subcontext description N.name
+
+  type cursor = C.cursor
+
+  let get_cursor t k = C.get_cursor t (to_key k)
+
+  let set_cursor t k = C.set_cursor t (to_key k)
+
+  let fold_rec ?depth t k ~init ~f =
+    C.fold_rec ?depth t (to_key k) ~init ~f:(fun k v acc -> f (of_key k) v acc)
+
+  module Cursor = struct
+    let empty = C.Cursor.empty
+
+    let set = C.Cursor.set
+
+    let get = C.Cursor.get
+
+    let set_cursor = C.Cursor.set_cursor
+
+    let get_cursor = C.Cursor.get_cursor
+  end
 end
 
 module Make_single_data_storage
@@ -710,12 +720,6 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
 
     type context = t
 
-    type cursor = C.cursor
-
-    let empty_cursor c =
-      let (t, _) = unpack c in
-      C.empty_cursor t
-
     let to_key i k = I.to_path i k
 
     let of_key k = Misc.remove_elem_from_list I.path_length k
@@ -798,11 +802,27 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
 
     let description = description
 
+    type cursor = C.cursor
+
+    let get_cursor _ _ = failwith "TODO"
+
     let set_cursor _ _ _ = failwith "TODO"
 
-    let copy_cursor _ ~from:_ ~to_:_ = failwith "TODO"
+    let fold_rec ?depth:_ _ _ ~init:_ ~f:_ = failwith "TODO"
 
-    let fold_rec ?depth:_ _ _ ~init:_ ~f:_= failwith "TODO"
+    module Cursor = struct
+      let empty c =
+        let (t, _) = unpack c in
+        C.Cursor.empty t
+
+      let set _ _ _ = failwith "TODO"
+
+      let get _ _ = failwith "TODO"
+
+      let get_cursor _ _ = failwith "TODO"
+
+      let set_cursor _ _ _ = failwith "TODO"
+    end
   end
 
   let resolve t prefix =

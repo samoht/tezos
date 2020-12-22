@@ -54,17 +54,30 @@ module type CONTEXT = sig
 
   type cursor
 
-  val empty_cursor : t -> cursor
+  val get_cursor : t -> key -> cursor Lwt.t
 
-  val set_cursor: t -> key -> cursor -> t Lwt.t
-
-  val copy_cursor : cursor -> from:cursor -> to_:key -> cursor Lwt.t
+  val set_cursor : t -> key -> cursor -> t Lwt.t
 
   val fold_rec :
     ?depth:int ->
-    t -> key -> init:'a -> f:(key -> cursor -> 'a -> 'a Lwt.t) -> 'a Lwt.t
-end
+    t ->
+    key ->
+    init:'a ->
+    f:(key -> cursor -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
 
+  module Cursor : sig
+    val empty : t -> cursor
+
+    val get : cursor -> key -> value option Lwt.t
+
+    val set : cursor -> key -> value -> cursor Lwt.t
+
+    val get_cursor : cursor -> key -> cursor Lwt.t
+
+    val set_cursor : cursor -> key -> cursor -> cursor Lwt.t
+  end
+end
 
 module Context : sig
   type ('ctxt, 'cursor) ops =
@@ -74,12 +87,16 @@ module Context : sig
 
   type ('a, 'b) witness
 
-  val witness: unit -> ('a, 'b) witness
+  val witness : unit -> ('a, 'b) witness
 
-  type t = Context : {kind : 'a kind;
-                      ctxt : 'a; ops : ('a, 'b) ops;
-                      wit: ('a, 'b) witness }
-                     -> t
+  type t =
+    | Context : {
+        kind : 'a kind;
+        ctxt : 'a;
+        ops : ('a, 'b) ops;
+        wit : ('a, 'b) witness;
+      }
+        -> t
 
   include CONTEXT with type t := t
 end

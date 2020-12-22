@@ -60,14 +60,30 @@ val register_resolver :
 
 val complete : t -> string -> string list Lwt.t
 
+(* Should we move this in V2? *)
+
 type cursor
 
-val empty_cursor: t -> cursor
+val get_cursor : t -> key -> cursor Lwt.t
 
-val set_cursor: t -> key -> cursor -> t Lwt.t
-
-val copy_cursor : cursor -> from:cursor -> to_:key -> cursor Lwt.t
+val set_cursor : t -> key -> cursor -> t Lwt.t
 
 val fold_rec :
   ?depth:int ->
-  t -> key -> init:'a -> f:(key -> cursor -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+  t ->
+  key ->
+  init:'a ->
+  f:(key -> cursor -> 'a -> 'a Lwt.t) ->
+  'a Lwt.t
+
+module Cursor : sig
+  val empty : t -> cursor
+
+  val get : cursor -> key -> value option Lwt.t
+
+  val set : cursor -> key -> value -> cursor Lwt.t
+
+  val get_cursor : cursor -> key -> cursor Lwt.t
+
+  val set_cursor : cursor -> key -> cursor -> cursor Lwt.t
+end

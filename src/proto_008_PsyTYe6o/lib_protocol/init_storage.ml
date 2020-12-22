@@ -32,31 +32,39 @@ module Migrate_from_007_to_008 = struct
     let (module To_index : Storage_functors.INDEX with type t = t) =
       to_index
     in
-    Raw_context.fold_rec ctxt ~depth:From_index.path_length index_path ~init
+    Raw_context.fold_rec
+      ctxt
+      ~depth:From_index.path_length
+      index_path
+      ~init
       ~f:(fun path v acc ->
         match From_index.of_path path with
         | Some i ->
-           let new_path = To_index.to_path i [] in
-           f new_path v acc
+            let new_path = To_index.to_path i [] in
+            f new_path v acc
         | None ->
-           Lwt.return acc)
+            Lwt.return acc)
 
-  let migrate_indexed_storage ?(log = true) ctxt ~from_index ~to_index ~index_path =
+  let migrate_indexed_storage ?(log = true) ctxt ~from_index ~to_index
+      ~index_path =
     let cntr = ref 0 in
     fold_keys
-      ~from_index ~to_index
-      ~init:(Raw_context.empty_cursor ctxt, false)
+      ~from_index
+      ~to_index
+      ~init:(Raw_context.Cursor.empty ctxt, false)
       ~f:(fun new_path v (acc, _) ->
-        incr cntr;
-        Raw_context.copy_cursor acc ~from:v ~to_:new_path
-        >|= fun acc -> (acc, true))
+        incr cntr ;
+        Raw_context.Cursor.set_cursor acc new_path v >|= fun acc -> (acc, true))
       ~index_path
       ctxt
     >>= fun (cursor, has_value) ->
-    (if log then Logging.lwt_log_error
-                   "migrate_indexed_storage_008 %s copied %d"
-                   (String.concat "/" index_path) !cntr
-     else Lwt.return ()) >>= fun () ->
+    ( if log then
+      Logging.lwt_log_error
+        "migrate_indexed_storage_008 %s copied %d"
+        (String.concat "/" index_path)
+        !cntr
+    else Lwt.return () )
+    >>= fun () ->
     if has_value then Raw_context.set_cursor ctxt index_path cursor
     else Lwt.return ctxt
 end
@@ -128,14 +136,15 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
         ~f:(fun contract ctxt ->
           Lwt.return ctxt
           >>=? fun ctxt ->
-          Migrate_from_007_to_008.migrate_indexed_storage ~log:false
+          Migrate_from_007_to_008.migrate_indexed_storage
+            ~log:false
             ~from_index:contract_index_007
             ~to_index:contract_index
             ~index_path:
               ( ["contracts"; "index"]
               @ Contract_repr.Index.to_path contract []
               @ ["delegated"] )
-              ctxt
+            ctxt
           >>= return)
         ctxt
       >>=? fun ctxt ->

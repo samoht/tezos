@@ -32,19 +32,25 @@ module Migrate_from_007_to_008 = struct
     let (module To_index : Storage_functors.INDEX with type t = t) =
       to_index
     in
-    Raw_context.fold_rec ctxt ~depth:From_index.path_length index_path ~init
+    Raw_context.fold_rec
+      ctxt
+      ~depth:From_index.path_length
+      index_path
+      ~init
       ~f:(fun path v acc ->
         match From_index.of_path path with
-        | Some i -> f (To_index.to_path i []) v acc
-        | None -> Lwt.return acc)
+        | Some i ->
+            f (To_index.to_path i []) v acc
+        | None ->
+            Lwt.return acc)
 
   let migrate_indexed_storage ctxt ~from_index ~to_index ~index_path =
     fold_keys
-      ~from_index ~to_index
-      ~init:(Raw_context.empty_cursor ctxt, false)
+      ~from_index
+      ~to_index
+      ~init:(Raw_context.Cursor.empty ctxt, false)
       ~f:(fun new_path v (acc, _) ->
-        Raw_context.copy_cursor acc ~from:v ~to_:new_path
-        >|= fun acc -> (acc, true))
+        Raw_context.Cursor.set_cursor acc new_path v >|= fun acc -> (acc, true))
       ~index_path
       ctxt
     >>= fun (cursor, has_value) ->
@@ -117,7 +123,8 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
       Storage.Contract.fold
         ~init:(ok ctxt)
         ~f:(fun contract ctxt ->
-          Lwt.return ctxt >>=? fun ctxt ->
+          Lwt.return ctxt
+          >>=? fun ctxt ->
           Migrate_from_007_to_008.migrate_indexed_storage
             ~from_index:contract_index_007
             ~to_index:contract_index
@@ -125,7 +132,7 @@ let prepare_first_block ctxt ~typecheck ~level ~timestamp ~fitness =
               ( ["contracts"; "index"]
               @ Contract_repr.Index.to_path contract []
               @ ["delegated"] )
-              ctxt
+            ctxt
           >>= return)
         ctxt
       >>=? fun ctxt ->

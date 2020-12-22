@@ -52,13 +52,23 @@ module M = struct
 
   type cursor = unit
 
-  let empty_cursor _ = ()
+  let get_cursor _ _ = assert false
 
   let set_cursor _ _ _ = assert false
 
-  let copy_cursor _ ~from:_ ~to_:_ = assert false
-
   let fold_rec ?depth:_ _ _ ~init:_ ~f:_ = assert false
+
+  module Cursor = struct
+    let empty _ = ()
+
+    let get _ _ = assert false
+
+    let set _ _ _ = assert false
+
+    let get_cursor _ _ = assert false
+
+    let set_cursor _ _ _ = assert false
+  end
 end
 
 open Tezos_protocol_environment
