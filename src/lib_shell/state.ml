@@ -1144,7 +1144,8 @@ module Block = struct
           >>= fun exists ->
           fail_unless
             exists
-            (failure "State.Block.store: context hash not found in context")
+            (failure "State.Block.store: context hash not found in context %a"
+               Context_hash.pp commit)
           >>=? fun _ ->
           fail_unless
             (Context_hash.equal block_header.shell.context commit)
