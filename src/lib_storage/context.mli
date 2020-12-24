@@ -88,6 +88,38 @@ type key_or_dir = [`Key of key | `Dir of key]
 val fold :
   context -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
 
+(** {2 Cursors} *)
+
+(** The type for context cursors. *)
+type cursor
+
+(** [get_cursor c k] is the cursor under the key [k]. *)
+val get_cursor : context -> key -> cursor Lwt.t
+
+(** [set_cursor c k v] set the cursor [v] under the key [k] in [c]. *)
+val set_cursor : context -> key -> cursor -> context Lwt.t
+
+val fold_rec :
+  ?depth:int ->
+  context ->
+  key ->
+  init:'a ->
+  f:(key_or_dir -> 'a -> 'a Lwt.t) ->
+  'a Lwt.t
+
+module Cursor : sig
+  (** The empty cursor. *)
+  val empty : context -> cursor
+
+  val get : cursor -> key -> value option Lwt.t
+
+  val set : cursor -> key -> value -> cursor Lwt.t
+
+  val get_cursor : cursor -> key -> cursor Lwt.t
+
+  val set_cursor : cursor -> key -> cursor -> cursor Lwt.t
+end
+
 (** {2 Accessing and Updating Versions} *)
 
 (** [restore_integrity ppf index] attempts to restore the context

@@ -406,6 +406,68 @@ let fold ctxt key ~init ~f =
     init
     keys
 
+type cursor = Store.tree
+
+let get_cursor ctxt key = Store.Tree.get_tree ctxt.tree (data_key key)
+
+let set_cursor ctxt key tree =
+  Store.Tree.add_tree ctxt.tree (data_key key) tree
+  >|= fun tree -> {ctxt with tree}
+
+let fold_rec ?depth ctxt root ~init ~f =
+  let depth = match depth with None -> None | Some i -> Some (`Eq i) in
+  Store.Tree.find_tree ctxt.tree (data_key root)
+  >>= function
+  | None ->
+      Lwt.return init
+  | Some tree ->
+      Store.Tree.fold
+        ?depth
+        ~force:`True
+        ~uniq:`False
+        ~node:(fun k _ acc -> f (`Dir k) acc)
+        ~contents:(fun k _ acc -> f (`Key k) acc)
+        tree
+        init
+
+let fold_keys ?depth ctxt root ~init ~f =
+  let depth = match depth with None -> None | Some i -> Some (`Eq i) in
+  Store.Tree.find_tree ctxt.tree (data_key root)
+  >>= function
+  | None ->
+      Lwt.return init
+  | Some tree ->
+      Store.Tree.fold
+        ?depth
+        ~force:`True
+        ~uniq:`False
+        ~contents:(fun k v acc -> f k v acc)
+        tree
+        init
+
+module Cursor = struct
+  let empty _ = Store.Tree.empty
+
+  let get tree k = Store.Tree.find tree k >|= Option.map Bytes.of_string
+
+  let set tree k v = Store.Tree.add tree k (Bytes.to_string v)
+
+  let get_cursor tree k = Store.Tree.get_tree tree k
+
+  let set_cursor tree k v = Store.Tree.add_tree tree k v
+end
+
+let fold ctxt key ~init ~f =
+  match key with
+  | "fold.v1" :: "rec" :: depth :: key ->
+      let depth = try Some (int_of_string depth) with Failure _ -> None in
+      fold_rec ?depth ctxt key ~init ~f
+  | "fold.v1" :: "keys" :: depth :: key ->
+      let depth = try Some (int_of_string depth) with Failure _ -> None in
+      fold_keys ?depth ctxt key ~init ~f:(fun k v acc -> f (`Key (v :: k)) acc)
+  | _ ->
+      fold ctxt key ~init ~f
+
 (*-- Predefined Fields -------------------------------------------------------*)
 
 let get_protocol v =
