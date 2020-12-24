@@ -1,0 +1,18 @@
+(executable
+ (name main_baker_008_PrwZFRvi)
+ (public_name tezos-baker-008-PrwZFRvi)
+ (libraries tezos-client-base-unix
+            tezos-client-commands
+            tezos-baking-008-PrwZFRvi-commands)
+ (flags (:standard -open Tezos_base__TzPervasives
+                   -open Tezos_protocol_008_PrwZFRvi
+                   -open Tezos_client_008_PrwZFRvi
+                   -open Tezos_client_commands
+                   -open Tezos_baking_008_PrwZFRvi_commands
+                   -open Tezos_stdlib_unix
+                   -open Tezos_client_base_unix)))
+
+(rule
+ (alias runtest_lint)
+ (deps (glob_files *.ml{,i}))
+ (action (run %{lib:tezos-tooling:lint.sh} %{deps})))
