@@ -406,6 +406,42 @@ let fold ctxt key ~init ~f =
     init
     keys
 
+type cursor = Store.tree
+
+let get_cursor ctxt key = Store.Tree.get_tree ctxt.tree (data_key key)
+
+let set_cursor ctxt key tree =
+  Store.Tree.add_tree ctxt.tree (data_key key) tree
+  >|= fun tree -> {ctxt with tree}
+
+let fold_rec ?depth ctxt root ~init ~f =
+  let depth = match depth with None -> None | Some i -> Some (`Eq i) in
+  Store.Tree.find_tree ctxt.tree (data_key root)
+  >>= function
+  | None ->
+      Lwt.return init
+  | Some tree ->
+      Store.Tree.fold
+        ?depth
+        ~force:`And_clear
+        ~uniq:`False
+        ~node:(fun k v acc -> f k (Store.Tree.of_node v) acc)
+        ~contents:(fun k v acc -> f k (Store.Tree.of_contents v) acc)
+        tree
+        init
+
+module Cursor = struct
+  let empty _ = Store.Tree.empty
+
+  let get tree k = Store.Tree.find tree k >|= Option.map Bytes.of_string
+
+  let set tree k v = Store.Tree.add tree k (Bytes.to_string v)
+
+  let get_cursor tree k = Store.Tree.get_tree tree k
+
+  let set_cursor tree k v = Store.Tree.add_tree tree k v
+end
+
 (*-- Predefined Fields -------------------------------------------------------*)
 
 let get_protocol v =
