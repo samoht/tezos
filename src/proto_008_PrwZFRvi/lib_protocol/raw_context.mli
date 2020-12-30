@@ -225,20 +225,25 @@ module type T = sig
 
   val copy : context -> from:key -> to_:key -> context tzresult Lwt.t
 
-  (** Iterator on all the items of a given directory. *)
-  val fold :
+  (** Recursively list all subkeys of a given key. *)
+  val keys : context -> key -> key list Lwt.t
+
+  (** Recursive iterator on all the subkeys of a given key. *)
+  val fold_rec :
+    ?depth:int ->
     context ->
     key ->
     init:'a ->
     f:(Context.key_or_dir -> 'a -> 'a Lwt.t) ->
     'a Lwt.t
 
-  (** Recursively list all subkeys of a given key. *)
-  val keys : context -> key -> key list Lwt.t
-
-  (** Recursive iterator on all the subkeys of a given key. *)
-  val fold_keys :
-    context -> key -> init:'a -> f:(key -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+  val fold :
+    ?depth:int ->
+    context ->
+    key ->
+    init:'a ->
+    f:(key -> value -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
 
   (** Internally used in {!Storage_functors} to escape from a view. *)
   val project : context -> root_context

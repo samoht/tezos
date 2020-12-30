@@ -38,6 +38,7 @@ module Make_encoder (V : VALUE) = struct
   let of_bytes ~key b =
     match Data_encoding.Binary.of_bytes V.encoding b with
     | None ->
+        let key = key () in
         error (Raw_context.Storage_error (Corrupted_data key))
     | Some v ->
         Ok v
@@ -65,19 +66,13 @@ let decode_len_value key len =
   | Some len ->
       ok len
 
-let map_key f = function `Key k -> `Key (f k) | `Dir k -> `Dir (f k)
-
 module Make_subcontext (R : REGISTER) (C : Raw_context.T) (N : NAME) :
   Raw_context.T with type t = C.t = struct
   type t = C.t
 
   type context = t
 
-  let name_length = List.length N.name
-
   let to_key k = N.name @ k
-
-  let of_key k = Misc.remove_elem_from_list name_length k
 
   let mem t k = C.mem t (to_key k)
 
@@ -103,13 +98,11 @@ module Make_subcontext (R : REGISTER) (C : Raw_context.T) (N : NAME) :
 
   let copy t ~from ~to_ = C.copy t ~from:(to_key from) ~to_:(to_key to_)
 
-  let fold t k ~init ~f =
-    C.fold t (to_key k) ~init ~f:(fun k acc -> f (map_key of_key k) acc)
+  let keys t k = C.keys t (to_key k)
 
-  let keys t k = C.keys t (to_key k) >|= fun keys -> List.map of_key keys
+  let fold_rec ?depth t k ~init ~f = C.fold_rec ?depth t (to_key k) ~init ~f
 
-  let fold_keys t k ~init ~f =
-    C.fold_keys t (to_key k) ~init ~f:(fun k acc -> f (of_key k) acc)
+  let fold ?depth t k ~init ~f = C.fold ?depth t (to_key k) ~init ~f
 
   let project = C.project
 
@@ -145,7 +138,7 @@ struct
   let get t =
     C.get t N.name
     >>=? fun b ->
-    let key = C.absolute_key t N.name in
+    let key () = C.absolute_key t N.name in
     Lwt.return (of_bytes ~key b)
 
   let get_option t =
@@ -154,7 +147,7 @@ struct
     | None ->
         ok_none
     | Some b ->
-        let key = C.absolute_key t N.name in
+        let key () = C.absolute_key t N.name in
         of_bytes ~key b >|? fun v -> Some v
 
   let init t v = C.init t N.name (to_bytes v) >|=? fun t -> C.project t
@@ -240,27 +233,12 @@ module Make_data_set_storage (C : Raw_context.T) (I : INDEX) :
   let clear s = C.remove_rec s [] >|= fun t -> C.project t
 
   let fold s ~init ~f =
-    let rec dig i path acc =
-      if Compare.Int.(i <= 1) then
-        C.fold s path ~init:acc ~f:(fun k acc ->
-            match k with
-            | `Dir _ ->
-                Lwt.return acc
-            | `Key file -> (
-              match I.of_path file with
-              | None ->
-                  assert false
-              | Some p ->
-                  f p acc ))
-      else
-        C.fold s path ~init:acc ~f:(fun k acc ->
-            match k with
-            | `Dir k ->
-                dig (i - 1) k acc
-            | `Key _ ->
-                Lwt.return acc)
-    in
-    dig I.path_length [] init
+    C.fold_rec s [] ~depth:I.path_length ~init ~f:(fun file acc ->
+        match file with
+        | `Dir _ ->
+            Lwt.return acc
+        | `Key file -> (
+          match I.of_path file with None -> assert false | Some p -> f p acc ))
 
   let elements s = fold s ~init:[] ~f:(fun p acc -> Lwt.return (p :: acc))
 
@@ -298,7 +276,7 @@ module Make_indexed_data_storage (C : Raw_context.T) (I : INDEX) (V : VALUE) :
   let get s i =
     C.get s (I.to_path i [])
     >>=? fun b ->
-    let key = C.absolute_key s (I.to_path i []) in
+    let key () = C.absolute_key s (I.to_path i []) in
     Lwt.return (of_bytes ~key b)
 
   let get_option s i =
@@ -307,7 +285,7 @@ module Make_indexed_data_storage (C : Raw_context.T) (I : INDEX) (V : VALUE) :
     | None ->
         ok_none
     | Some b ->
-        let key = C.absolute_key s (I.to_path i []) in
+        let key () = C.absolute_key s (I.to_path i []) in
         of_bytes ~key b >|? fun v -> Some v
 
   let set s i v =
@@ -329,45 +307,23 @@ module Make_indexed_data_storage (C : Raw_context.T) (I : INDEX) (V : VALUE) :
 
   let clear s = C.remove_rec s [] >|= fun t -> C.project t
 
-  let fold_keys s ~init ~f =
-    let rec dig i path acc =
-      if Compare.Int.(i <= 1) then
-        C.fold s path ~init:acc ~f:(fun k acc ->
-            match k with
-            | `Dir _ ->
-                Lwt.return acc
-            | `Key file -> (
-              match I.of_path file with
-              | None ->
-                  assert false
-              | Some path ->
-                  f path acc ))
-      else
-        C.fold s path ~init:acc ~f:(fun k acc ->
-            match k with
-            | `Dir k ->
-                dig (i - 1) k acc
-            | `Key _ ->
-                Lwt.return acc)
-    in
-    dig I.path_length [] init
-
   let fold s ~init ~f =
-    let f path acc =
-      get s path
-      >>= function
-      | Error _ ->
-          (* FIXME: silently ignore unparsable data *)
-          Lwt.return acc
-      | Ok v ->
-          f path v acc
-    in
-    fold_keys s ~init ~f
+    C.fold ~depth:I.path_length s [] ~init ~f:(fun file v acc ->
+        match I.of_path file with
+        | None ->
+            assert false
+        | Some path -> (
+            let key () = C.absolute_key s file in
+            match of_bytes ~key v with
+            | Error _ ->
+                Lwt.return acc
+            | Ok v ->
+                f path v acc ))
 
   let bindings s =
     fold s ~init:[] ~f:(fun p v acc -> Lwt.return ((p, v) :: acc))
 
-  let keys s = fold_keys s ~init:[] ~f:(fun p acc -> Lwt.return (p :: acc))
+  let keys s = fold s ~init:[] ~f:(fun p _ acc -> Lwt.return (p :: acc))
 
   let () =
     let open Storage_description in
@@ -458,7 +414,7 @@ struct
     >>=? fun s ->
     C.get s (data_key i)
     >>=? fun b ->
-    let key = C.absolute_key s (data_key i) in
+    let key () = C.absolute_key s (data_key i) in
     Lwt.return (of_bytes ~key b >|? fun v -> (C.project s, v))
 
   let get_option s i =
@@ -517,34 +473,19 @@ struct
     match v with None -> remove s i | Some v -> init_set s i v
 
   let fold_keys_unaccounted s ~init ~f =
-    let rec dig i path acc =
-      if Compare.Int.(i <= 0) then
-        C.fold s path ~init:acc ~f:(fun k acc ->
-            match k with
-            | `Dir _ ->
-                Lwt.return acc
-            | `Key file -> (
-              match List.rev file with
-              | last :: _ when Compare.String.(last = len_name) ->
-                  Lwt.return acc
-              | last :: rest when Compare.String.(last = data_name) -> (
-                  let file = List.rev rest in
-                  match I.of_path file with
-                  | None ->
-                      assert false
-                  | Some path ->
-                      f path acc )
-              | _ ->
-                  assert false ))
-      else
-        C.fold s path ~init:acc ~f:(fun k acc ->
-            match k with
-            | `Dir k ->
-                dig (i - 1) k acc
-            | `Key _ ->
-                Lwt.return acc)
-    in
-    dig I.path_length [] init
+    C.fold ~depth:(I.path_length + 1) s [] ~init ~f:(fun file _ acc ->
+        match List.rev file with
+        | last :: _ when Compare.String.(last = len_name) ->
+            Lwt.return acc
+        | last :: rest when Compare.String.(last = data_name) -> (
+            let file = List.rev rest in
+            match I.of_path file with
+            | None ->
+                assert false
+            | Some path ->
+                f path acc )
+        | _ ->
+            assert false)
 
   let keys_unaccounted s =
     fold_keys_unaccounted s ~init:[] ~f:(fun p acc -> Lwt.return (p :: acc))
@@ -658,26 +599,18 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
   let clear t = C.remove_rec t [] >|= fun t -> C.project t
 
   let fold_keys t ~init ~f =
-    let rec dig i path acc =
-      if Compare.Int.(i <= 0) then
+    C.fold_rec t [] ~depth:I.path_length ~init ~f:(fun path acc ->
+        let path = match path with `Dir k | `Key k -> k in
         match I.of_path path with
         | None ->
             assert false
         | Some path ->
-            f path acc
-      else
-        C.fold t path ~init:acc ~f:(fun k acc ->
-            match k with
-            | `Dir k ->
-                dig (i - 1) k acc
-            | `Key _ ->
-                Lwt.return acc)
-    in
-    dig I.path_length [] init
+            f path acc)
 
   let keys t = fold_keys t ~init:[] ~f:(fun i acc -> Lwt.return (i :: acc))
 
-  let list t k = C.fold t k ~init:[] ~f:(fun k acc -> Lwt.return (k :: acc))
+  let list t k =
+    C.fold_rec ~depth:1 t k ~init:[] ~f:(fun k acc -> Lwt.return (k :: acc))
 
   let remove_rec t k = C.remove_rec t (I.to_path k [])
 
@@ -700,8 +633,6 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
     type context = t
 
     let to_key i k = I.to_path i k
-
-    let of_key k = Misc.remove_elem_from_list I.path_length k
 
     let mem c k =
       let (t, i) = unpack c in
@@ -751,17 +682,17 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
       let (t, i) = unpack c in
       C.copy t ~from:(to_key i from) ~to_:(to_key i to_) >|=? fun t -> pack t i
 
-    let fold c k ~init ~f =
-      let (t, i) = unpack c in
-      C.fold t (to_key i k) ~init ~f:(fun k acc -> f (map_key of_key k) acc)
-
     let keys c k =
       let (t, i) = unpack c in
-      C.keys t (to_key i k) >|= fun keys -> List.map of_key keys
+      C.keys t (to_key i k)
 
-    let fold_keys c k ~init ~f =
+    let fold_rec ?depth c k ~init ~f =
       let (t, i) = unpack c in
-      C.fold_keys t (to_key i k) ~init ~f:(fun k acc -> f (of_key k) acc)
+      C.fold_rec ?depth t (to_key i k) ~init ~f
+
+    let fold ?depth c k ~init ~f =
+      let (t, i) = unpack c in
+      C.fold ?depth t (to_key i k) ~init ~f
 
     let project c =
       let (t, _) = unpack c in
@@ -863,6 +794,7 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
 
     let fold s ~init ~f =
       fold_keys s ~init ~f:(fun i acc ->
+          (* FIXME: why do we need to run 'mem' here? *)
           mem s i >>= function true -> f i acc | false -> Lwt.return acc)
 
     let elements s = fold s ~init:[] ~f:(fun p acc -> Lwt.return (p :: acc))
@@ -899,7 +831,7 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
     let get s i =
       Raw_context.get (pack s i) N.name
       >>=? fun b ->
-      let key = Raw_context.absolute_key (pack s i) N.name in
+      let key () = Raw_context.absolute_key (pack s i) N.name in
       Lwt.return (of_bytes ~key b)
 
     let get_option s i =
@@ -908,7 +840,7 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
       | None ->
           ok_none
       | Some b ->
-          let key = Raw_context.absolute_key (pack s i) N.name in
+          let key () = Raw_context.absolute_key (pack s i) N.name in
           of_bytes ~key b >|? fun v -> Some v
 
     let set s i v =
@@ -956,15 +888,17 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
       >|= fun t -> C.project t
 
     let fold s ~init ~f =
-      fold_keys s ~init ~f:(fun i acc ->
-          get s i >>= function Error _ -> Lwt.return acc | Ok v -> f i v acc)
+      C.fold_rec s ~init ~depth:I.path_length [] ~f:(fun k acc ->
+          let i = match k with `Dir k | `Key k -> k in
+          match I.of_path i with
+          | None ->
+              assert false
+          | Some i -> (
+              get s i
+              >>= function Error _ -> Lwt.return acc | Ok v -> f i v acc ))
 
     let bindings s =
       fold s ~init:[] ~f:(fun p v acc -> Lwt.return ((p, v) :: acc))
-
-    let fold_keys s ~init ~f =
-      fold_keys s ~init ~f:(fun i acc ->
-          mem s i >>= function false -> Lwt.return acc | true -> f i acc)
 
     let keys s = fold_keys s ~init:[] ~f:(fun p acc -> Lwt.return (p :: acc))
 
@@ -1040,7 +974,7 @@ module Make_indexed_subcontext (C : Raw_context.T) (I : INDEX) :
       >>=? fun c ->
       Raw_context.get c data_name
       >>=? fun b ->
-      let key = Raw_context.absolute_key c data_name in
+      let key () = Raw_context.absolute_key c data_name in
       Lwt.return (of_bytes ~key b >|? fun v -> (Raw_context.project c, v))
 
     let get_option s i =
@@ -1174,9 +1108,5 @@ struct
   let bindings s =
     fold s ~init:[] ~f:(fun p v acc -> Lwt.return ((p, v) :: acc))
 
-  let fold_keys s ~init ~f =
-    C.fold_keys s ~init ~f:(fun k acc ->
-        match K.unwrap k with None -> Lwt.return acc | Some k -> f k acc)
-
-  let keys s = fold_keys s ~init:[] ~f:(fun p acc -> Lwt.return (p :: acc))
+  let keys s = fold s ~init:[] ~f:(fun p _ acc -> Lwt.return (p :: acc))
 end

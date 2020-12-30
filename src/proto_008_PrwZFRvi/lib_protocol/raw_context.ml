@@ -657,17 +657,23 @@ module type T = sig
 
   val copy : context -> from:key -> to_:key -> context tzresult Lwt.t
 
-  val fold :
+  val keys : context -> key -> key list Lwt.t
+
+  val fold_rec :
+    ?depth:int ->
     context ->
     key ->
     init:'a ->
     f:(Context.key_or_dir -> 'a -> 'a Lwt.t) ->
     'a Lwt.t
 
-  val keys : context -> key -> key list Lwt.t
-
-  val fold_keys :
-    context -> key -> init:'a -> f:(key -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+  val fold :
+    ?depth:int ->
+    context ->
+    key ->
+    init:'a ->
+    f:(key -> value -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
 
   val project : context -> root_context
 
@@ -743,11 +749,24 @@ let copy ctxt ~from ~to_ =
   | Some context ->
       ok {ctxt with context}
 
-let fold ctxt k ~init ~f = Context.fold ctxt.context k ~init ~f
+let fold_rec ?depth ctxt key ~init ~f =
+  let depth = match depth with None -> "none" | Some d -> string_of_int d in
+  let k = "fold.v1" :: "rec" :: depth :: key in
+  Context.fold ctxt.context k ~init ~f:(fun k acc ->
+      match k with `Dir k -> f (`Dir k) acc | `Key k -> f (`Key k) acc)
 
-let keys ctxt k = Context.keys ctxt.context k
+let fold ?depth ctxt key ~init ~f =
+  let depth = match depth with None -> "none" | Some d -> string_of_int d in
+  let k = "fold.v1" :: "keys" :: depth :: key in
+  Context.fold ctxt.context k ~init ~f:(fun k acc ->
+      match k with
+      | `Dir _ | `Key [] ->
+          assert false
+      | `Key (v :: k) ->
+          f k (Bytes.of_string v) acc)
 
-let fold_keys ctxt k ~init ~f = Context.fold_keys ctxt.context k ~init ~f
+let keys ctxt k =
+  fold ctxt k ~init:[] ~f:(fun k _ acc -> Lwt.return (k :: acc))
 
 let project x = x
 

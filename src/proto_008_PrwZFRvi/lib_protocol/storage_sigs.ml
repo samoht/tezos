@@ -297,12 +297,8 @@ module type Indexed_data_storage = sig
   (** Lists all the keys and associated data. *)
   val bindings : context -> (key * value) list Lwt.t
 
-  (** Iterates over all the keys and associated data. *)
   val fold :
     context -> init:'a -> f:(key -> value -> 'a -> 'a Lwt.t) -> 'a Lwt.t
-
-  (** Iterate over all the keys. *)
-  val fold_keys : context -> init:'a -> f:(key -> 'a -> 'a Lwt.t) -> 'a Lwt.t
 end
 
 module type Indexed_data_snapshotable_storage = sig
