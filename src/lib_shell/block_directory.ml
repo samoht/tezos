@@ -28,22 +28,29 @@ let rec read_partial_context context path depth =
   if depth = 0 then Lwt.return Block_services.Cut
   else
     (* try to read as file *)
-    Context.get context path
+    Context.find context path
     >>= function
     | Some v ->
         Lwt.return (Block_services.Key v)
     | None ->
+        let aux k acc =
+          match k with
+          | [] ->
+              assert false
+          | khd :: ktl as k ->
+              read_partial_context context k (depth - 1)
+              >>= fun v ->
+              let k = List.last khd ktl in
+              Lwt.return ((k, v) :: acc)
+        in
         (* try to read as directory *)
-        Context.fold context path ~init:[] ~f:(fun k acc ->
-            match k with
-            | `Key [] | `Dir [] ->
-                (* This is an invariant of {!Context.fold} *)
-                assert false
-            | `Key (khd :: ktl as k) | `Dir (khd :: ktl as k) ->
-                read_partial_context context k (depth - 1)
-                >>= fun v ->
-                let k = List.last khd ktl in
-                Lwt.return ((k, v) :: acc))
+        Context.fold
+          ~depth:1
+          context
+          path
+          ~init:[]
+          ~value:(fun k _ acc -> aux k acc)
+          ~tree:(fun k _ acc -> aux k acc)
         >>= fun l -> Lwt.return (Block_services.Dir (List.rev l))
 
 let build_raw_header_rpc_directory (module Proto : Block_services.PROTO) =
@@ -297,7 +304,7 @@ let build_raw_rpc_directory ~user_activated_upgrades
       >>=? fun context ->
       Context.mem context path
       >>= fun mem ->
-      Context.dir_mem context path
+      Context.mem_tree context path
       >>= fun dir_mem ->
       if not (mem || dir_mem) then Lwt.fail Not_found
       else read_partial_context context path depth >>= fun dir -> return dir) ;

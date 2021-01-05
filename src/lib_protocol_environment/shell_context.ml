@@ -30,7 +30,40 @@ let ( >>= ) = Lwt.( >>= )
 
 type _ Context.kind += Shell : Tezos_storage.Context.t Context.kind
 
-let ops = (module Tezos_storage.Context : CONTEXT with type t = 'ctxt)
+module C = struct
+  include Tezos_storage.Context
+
+  let set_protocol = add_protocol
+
+  type key_or_dir = [`Key of key | `Dir of key]
+
+  let copy ctxt ~from ~to_ =
+    find_tree ctxt from
+    >>= function
+    | None ->
+        Lwt.return_none
+    | Some sub_tree ->
+        add_tree ctxt to_ sub_tree >>= Lwt.return_some
+
+  let set = add
+
+  let get = find
+
+  let dir_mem = mem_tree
+
+  let remove_rec = remove
+
+  let fold t k ~init ~f =
+    fold
+      ~depth:1
+      t
+      k
+      ~init
+      ~value:(fun k _ acc -> f (`Key k) acc)
+      ~tree:(fun k _ acc -> f (`Dir k) acc)
+end
+
+let ops = (module C : CONTEXT with type t = 'ctxt)
 
 let checkout index context_hash =
   Tezos_storage.Context.checkout index context_hash
