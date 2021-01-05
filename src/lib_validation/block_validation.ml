@@ -63,14 +63,14 @@ let update_testchain_status ctxt predecessor_header timestamp =
       return ctxt
   | Running {expiration; _} ->
       if Time.Protocol.(expiration <= timestamp) then
-        Context.set_test_chain ctxt Not_running >>= fun ctxt -> return ctxt
+        Context.add_test_chain ctxt Not_running >>= fun ctxt -> return ctxt
       else return ctxt
   | Forking {protocol; expiration} ->
       let predecessor_hash = Block_header.hash predecessor_header in
       let genesis = Context.compute_testchain_genesis predecessor_hash in
       let chain_id = Chain_id.of_block_hash genesis in
       (* legacy semantics *)
-      Context.set_test_chain
+      Context.add_test_chain
         ctxt
         (Running {chain_id; genesis; protocol; expiration})
       >>= fun ctxt -> return ctxt
@@ -96,9 +96,9 @@ let init_test_chain ctxt forked_header =
       Proto_test.init test_ctxt forked_header.Block_header.shell
       >>=? fun {context = test_ctxt; _} ->
       let test_ctxt = Shell_context.unwrap_disk_context test_ctxt in
-      Context.set_test_chain test_ctxt Not_running
+      Context.add_test_chain test_ctxt Not_running
       >>= fun test_ctxt ->
-      Context.set_protocol test_ctxt protocol
+      Context.add_protocol test_ctxt protocol
       >>= fun test_ctxt ->
       Context.commit_test_chain_genesis test_ctxt forked_header
       >>= fun genesis_header -> return genesis_header
@@ -153,7 +153,7 @@ let may_force_protocol_upgrade ~user_activated_upgrades ~level
       let context =
         Shell_context.unwrap_disk_context validation_result.context
       in
-      Context.set_protocol context hash
+      Context.add_protocol context hash
       >>= fun context ->
       let context = Shell_context.wrap_disk_context context in
       Lwt.return {validation_result with context}
@@ -177,7 +177,7 @@ let may_patch_protocol ~user_activated_upgrades
         ~level
         validation_result
   | Some replacement_protocol ->
-      Context.set_protocol context replacement_protocol
+      Context.add_protocol context replacement_protocol
       >>= fun context ->
       let context = Shell_context.wrap_disk_context context in
       Lwt.return {validation_result with context}
@@ -310,13 +310,13 @@ module Make (Proto : Registered_protocol.T) = struct
     | None ->
         Lwt.return context
     | Some hash ->
-        Context.set_predecessor_block_metadata_hash context hash )
+        Context.add_predecessor_block_metadata_hash context hash )
     >>= fun context ->
     ( match predecessor_ops_metadata_hash with
     | None ->
         Lwt.return context
     | Some hash ->
-        Context.set_predecessor_ops_metadata_hash context hash )
+        Context.add_predecessor_ops_metadata_hash context hash )
     >>= fun context ->
     let context = Shell_context.wrap_disk_context context in
     Proto.begin_application
