@@ -1053,15 +1053,6 @@ struct
   module Context = struct
     include Context
 
-    let fold_keys s k ~init ~f =
-      let rec loop k acc =
-        fold s k ~init:acc ~f:(fun file acc ->
-            match file with `Key k -> f k acc | `Dir k -> loop k acc)
-      in
-      loop k init
-
-    let keys t = fold_keys t ~init:[] ~f:(fun k acc -> Lwt.return (k :: acc))
-
     let register_resolver = Base58.register_resolver
 
     let complete ctxt s = Base58.complete ctxt s

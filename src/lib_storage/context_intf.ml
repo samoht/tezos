@@ -44,7 +44,7 @@ module type S = sig
   val find : t -> key -> value option Lwt.t
 
   (** [get t k] is similar to {!find} but raise [Not_found] if [k] is
-     unbound in [t]. *)
+     unbound in [t]. TODO(samoht): should it raise [Missing_key] instead? *)
   val get : t -> key -> value Lwt.t
 
   (** [add t k v] is the database view where [k] is bound to [v] and
@@ -84,11 +84,9 @@ module type S = sig
     'a Lwt.t
 
   module Tree : sig
-    val equal : tree -> tree -> bool
+    val empty : t -> tree
 
-    val hash : tree -> Context_hash.t
-
-    val empty : tree
+    val is_empty : tree -> bool
 
     val mem : tree -> key -> bool Lwt.t
 

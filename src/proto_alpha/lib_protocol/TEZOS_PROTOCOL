@@ -37,6 +37,7 @@
         "Sapling_repr",
         "Lazy_storage_kind",
 
+        "Raw_context_intf",
         "Raw_context",
         "Storage_costs",
         "Storage_sigs",

@@ -25,10 +25,12 @@
 
 open Tezos_protocol_environment
 
-type t
+type t = Dir of t Map.Make(String).t | Key of Context.value
 
 type _ Context.kind += Memory : t Context.kind
 
 val empty : Context.t
 
 val encoding : Context.t Data_encoding.t
+
+module M : CONTEXT with type t = t and type tree = t

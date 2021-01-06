@@ -1053,12 +1053,38 @@ struct
   module Context = struct
     include Context
 
+    let set = add
+
+    let get = find
+
+    let dir_mem = mem_tree
+
+    let copy ctxt ~from ~to_ =
+      find_tree ctxt from
+      >>= function
+      | None ->
+          Lwt.return_none
+      | Some sub_tree ->
+          add_tree ctxt to_ sub_tree >>= Lwt.return_some
+
     let fold_keys s k ~init ~f =
-      let rec loop k acc =
-        fold s k ~init:acc ~f:(fun file acc ->
-            match file with `Key k -> f k acc | `Dir k -> loop k acc)
-      in
-      loop k init
+      fold
+        s
+        k
+        ~init
+        ~value:(fun k _ acc -> f k acc)
+        ~tree:(fun _ _ acc -> Lwt.return acc)
+
+    type key_or_dir = [`Key of key | `Dir of key]
+
+    let fold t k ~init ~f =
+      fold
+        ~depth:1
+        t
+        k
+        ~init
+        ~value:(fun k _ acc -> f (`Key k) acc)
+        ~tree:(fun k _ acc -> f (`Dir k) acc)
 
     let keys t = fold_keys t ~init:[] ~f:(fun k acc -> Lwt.return (k :: acc))
 

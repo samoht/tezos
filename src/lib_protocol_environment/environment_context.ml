@@ -25,34 +25,42 @@
 
 open Error_monad
 
-module type CONTEXT = sig
-  type t
+module type CONTEXT = Environment_context_intf.CONTEXT
 
-  type key = string list
+(* TODO(samoht): that's exactly Tezos_storage.Context.S *)
 
-  type value = Bytes.t
+module Witness : sig
+  type (_, _) eq = Refl : ('a, 'a) eq
 
-  val mem : t -> key -> bool Lwt.t
+  type 'a t
 
-  val dir_mem : t -> key -> bool Lwt.t
+  val make : unit -> 'a t
 
-  val get : t -> key -> value option Lwt.t
+  val eq : 'a t -> 'b t -> ('a, 'b) eq option
+end = struct
+  type (_, _) eq = Refl : ('a, 'a) eq
 
-  val set : t -> key -> value -> t Lwt.t
+  type _ equality = ..
 
-  val copy : t -> from:key -> to_:key -> t option Lwt.t
+  module type Inst = sig
+    type t
 
-  val remove_rec : t -> key -> t Lwt.t
+    type _ equality += Eq : t equality
+  end
 
-  type key_or_dir = [`Key of key | `Dir of key]
+  type 'a t = (module Inst with type t = 'a)
 
-  val fold :
-    t -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+  let make : type a. unit -> a t =
+   fun () ->
+    let module Inst = struct
+      type t = a
 
-  val set_protocol : t -> Protocol_hash.t -> t Lwt.t
+      type _ equality += Eq : t equality
+    end in
+    (module Inst)
 
-  val fork_test_chain :
-    t -> protocol:Protocol_hash.t -> expiration:Time.Protocol.t -> t Lwt.t
+  let eq : type a b. a t -> b t -> (a, b) eq option =
+   fun (module A) (module B) -> match A.Eq with B.Eq -> Some Refl | _ -> None
 end
 
 module Context = struct
@@ -60,49 +68,121 @@ module Context = struct
 
   type value = Bytes.t
 
-  type 'ctxt ops = (module CONTEXT with type t = 'ctxt)
+  type ('ctxt, 'tree) ops =
+    (module CONTEXT with type t = 'ctxt and type tree = 'tree)
 
   type _ kind = ..
 
-  type t = Context : {kind : 'a kind; ctxt : 'a; ops : 'a ops} -> t
+  type ('a, 'b) witness = 'a Witness.t * 'b Witness.t
+
+  let witness () = (Witness.make (), Witness.make ())
+
+  let equiv (a, b) (c, d) = (Witness.eq a c, Witness.eq b d)
+
+  type t =
+    | Context : {
+        kind : 'a kind;
+        ctxt : 'a;
+        ops : ('a, 'b) ops;
+        wit : ('a, 'b) witness;
+      }
+        -> t
 
   let mem (Context {ops = (module Ops); ctxt; _}) key = Ops.mem ctxt key
 
-  let set (Context {ops = (module Ops) as ops; ctxt; kind}) key value =
-    Ops.set ctxt key value
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
-
-  let dir_mem (Context {ops = (module Ops); ctxt; _}) key =
-    Ops.dir_mem ctxt key
+  let add (Context ({ops = (module Ops); ctxt; _} as c)) key value =
+    Ops.add ctxt key value >|= fun ctxt -> Context {c with ctxt}
 
   let get (Context {ops = (module Ops); ctxt; _}) key = Ops.get ctxt key
 
-  let copy (Context {ops = (module Ops) as ops; ctxt; kind}) ~from ~to_ =
-    Ops.copy ctxt ~from ~to_
-    >>= function
-    | Some ctxt ->
-        Lwt.return_some (Context {ops; ctxt; kind})
-    | None ->
-        Lwt.return_none
+  let find (Context {ops = (module Ops); ctxt; _}) key = Ops.find ctxt key
 
-  let remove_rec (Context {ops = (module Ops) as ops; ctxt; kind}) key =
-    Ops.remove_rec ctxt key
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
+  let remove_rec (Context ({ops = (module Ops); ctxt; _} as c)) key =
+    Ops.remove_rec ctxt key >|= fun ctxt -> Context {c with ctxt}
 
-  type key_or_dir = [`Key of key | `Dir of key]
+  (* trees *)
 
-  let fold (Context {ops = (module Ops); ctxt; _}) key ~init ~f =
-    Ops.fold ctxt key ~init ~f
+  type tree =
+    | Tree : {ops : ('a, 'b) ops; tree : 'b; wit : ('a, 'b) witness} -> tree
 
-  let set_protocol (Context {ops = (module Ops) as ops; ctxt; kind})
-      protocol_hash =
+  let mem_tree (Context {ops = (module Ops); ctxt; _}) key =
+    Ops.mem_tree ctxt key
+
+  let add_tree (Context ({ops = (module Ops); ctxt; _} as c)) key
+      (Tree {tree; wit; _}) =
+    match equiv c.wit wit with
+    | (Some Refl, Some Refl) ->
+        Ops.add_tree ctxt key tree >|= fun ctxt -> Context {c with ctxt}
+    | _ ->
+        assert false
+
+  let get_tree (Context {ops = (module Ops) as ops; ctxt; wit; _}) key =
+    Ops.get_tree ctxt key >|= fun tree -> Tree {ops; tree; wit}
+
+  let find_tree (Context {ops = (module Ops) as ops; ctxt; wit; _}) key =
+    Ops.find_tree ctxt key >|= Option.map (fun tree -> Tree {ops; tree; wit})
+
+  let fold ?depth (Context {ops = (module Ops) as ops; ctxt; wit; _}) key ~init
+      ~value ~tree =
+    Ops.fold ?depth ctxt key ~init ~value ~tree:(fun k v acc ->
+        let v = Tree {ops; tree = v; wit} in
+        tree k v acc)
+
+  (* Tree *)
+  module Tree = struct
+    let empty (Context {ops = (module Ops) as ops; wit; ctxt; _}) =
+      Tree {ops; wit; tree = Ops.Tree.empty ctxt}
+
+    let is_empty (Tree {ops = (module Ops); tree; _}) = Ops.Tree.is_empty tree
+
+    let mem (Tree {ops = (module Ops); tree; _}) key = Ops.Tree.mem tree key
+
+    let add (Tree ({ops = (module Ops); tree; _} as c)) key value =
+      Ops.Tree.add tree key value >|= fun tree -> Tree {c with tree}
+
+    let get (Tree {ops = (module Ops); tree; _}) key = Ops.Tree.get tree key
+
+    let find (Tree {ops = (module Ops); tree; _}) key = Ops.Tree.find tree key
+
+    let mem_tree (Tree {ops = (module Ops); tree; _}) key =
+      Ops.Tree.mem_tree tree key
+
+    let add_tree (Tree ({ops = (module Ops); tree; wit; _} as c)) key
+        (Tree {tree = tree2; wit = wit2; _}) =
+      match equiv wit wit2 with
+      | (Some Refl, Some Refl) ->
+          Ops.Tree.add_tree tree key tree2 >|= fun tree -> Tree {c with tree}
+      | _ ->
+          assert false
+
+    let get_tree (Tree ({ops = (module Ops); tree; _} as c)) key =
+      Ops.Tree.get_tree tree key >|= fun tree -> Tree {c with tree}
+
+    let find_tree (Tree ({ops = (module Ops); tree; _} as c)) key =
+      Ops.Tree.find_tree tree key
+      >|= Option.map (fun tree -> Tree {c with tree})
+
+    let remove_rec (Tree ({ops = (module Ops); tree; _} as c)) key =
+      Ops.Tree.remove_rec tree key >|= fun tree -> Tree {c with tree}
+
+    let fold ?depth (Tree {ops = (module Ops) as ops; tree = t; wit; _}) key
+        ~init ~value ~tree =
+      Ops.Tree.fold ?depth t key ~init ~value ~tree:(fun k v acc ->
+          let v = Tree {ops; tree = v; wit} in
+          tree k v acc)
+  end
+
+  (* misc *)
+
+  let set_protocol (Context ({ops = (module Ops); ctxt; _} as c)) protocol_hash
+      =
     Ops.set_protocol ctxt protocol_hash
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
+    >>= fun ctxt -> Lwt.return (Context {c with ctxt})
 
-  let fork_test_chain (Context {ops = (module Ops) as ops; ctxt; kind})
-      ~protocol ~expiration =
+  let fork_test_chain (Context ({ops = (module Ops); ctxt; _} as c)) ~protocol
+      ~expiration =
     Ops.fork_test_chain ctxt ~protocol ~expiration
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
+    >>= fun ctxt -> Lwt.return (Context {c with ctxt})
 end
 
 type validation_result = {

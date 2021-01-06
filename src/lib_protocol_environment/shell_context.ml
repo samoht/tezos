@@ -47,8 +47,6 @@ module C = struct
 
   let set = add
 
-  let get = find
-
   let dir_mem = mem_tree
 
   let fold t k ~init ~f =

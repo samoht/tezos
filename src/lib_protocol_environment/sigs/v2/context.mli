@@ -23,37 +23,96 @@
 (*                                                                           *)
 (*****************************************************************************)
 
-(** View over the context store, restricted to types, access and
-    functional manipulation of an existing context. *)
+(* TODO(samoht): that's exactly Tezos_storage.Context.S *)
 
+(** The type for database views. *)
 type t
 
-(** Keys in (kex x value) database implementations *)
+(** The type for database keys. *)
 type key = string list
 
-(** Values in (kex x value) database implementations *)
+(** The type for database values. *)
 type value = bytes
 
+(** [mem t k] is true iff [k] is bound to a value in [t]. *)
 val mem : t -> key -> bool Lwt.t
 
-val dir_mem : t -> key -> bool Lwt.t
+(** [find t k] is [Some v] if [k] is bound to [v] in [t] and [None]
+     otherwise. *)
+val find : t -> key -> value option Lwt.t
 
-val get : t -> key -> value option Lwt.t
+(** [get t k] is similar to {!find} but raise [Not_found] if [k] is
+     unbound in [t]. *)
+val get : t -> key -> value Lwt.t
 
-val set : t -> key -> value -> t Lwt.t
+(** [add t k v] is the database view where [k] is bound to [v] and
+     is similar to [t] for other keys. *)
+val add : t -> key -> value -> t Lwt.t
 
-(** [copy] returns None if the [from] key is not bound *)
-val copy : t -> from:key -> to_:key -> t option Lwt.t
-
+(** [remove_rec c k] removes any values and trees bound to [k] in [c]. *)
 val remove_rec : t -> key -> t Lwt.t
 
-type key_or_dir = [`Key of key | `Dir of key]
+(** {2 Trees} *)
 
-val fold : t -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+(** The type for database trees. *)
+type tree
 
-val keys : t -> key -> key list Lwt.t
+(** [mem_tree t k] is true iff [k] is bound to a tree in [t]. *)
+val mem_tree : t -> key -> bool Lwt.t
 
-val fold_keys : t -> key -> init:'a -> f:(key -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+(** [find_tree c k] is [Some v] if [v] is the tree bound to [k] in
+     [t]. If [k] is unbound it is [None]. *)
+val find_tree : t -> key -> tree option Lwt.t
+
+(** [get_tree t k] is similar to {!find} but raise [Not_found] if
+     [k] is unbound. *)
+val get_tree : t -> key -> tree Lwt.t
+
+(** [add_tree t k v] binds the tree [v] to the key [k] in [t]. *)
+val add_tree : t -> key -> tree -> t Lwt.t
+
+(** Recursive fold *)
+val fold :
+  ?depth:int ->
+  t ->
+  key ->
+  init:'a ->
+  value:(key -> value -> 'a -> 'a Lwt.t) ->
+  tree:(key -> tree -> 'a -> 'a Lwt.t) ->
+  'a Lwt.t
+
+module Tree : sig
+  val empty : t -> tree
+
+  val is_empty : tree -> bool
+
+  val mem : tree -> key -> bool Lwt.t
+
+  val mem_tree : tree -> key -> bool Lwt.t
+
+  val find : tree -> key -> value option Lwt.t
+
+  val get : tree -> key -> value Lwt.t
+
+  val add : tree -> key -> value -> tree Lwt.t
+
+  val remove_rec : tree -> key -> tree Lwt.t
+
+  val find_tree : tree -> key -> tree option Lwt.t
+
+  val get_tree : tree -> key -> tree Lwt.t
+
+  val add_tree : tree -> key -> tree -> tree Lwt.t
+
+  val fold :
+    ?depth:int ->
+    tree ->
+    key ->
+    init:'a ->
+    value:(key -> value -> 'a -> 'a Lwt.t) ->
+    tree:(key -> tree -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
+end
 
 val register_resolver :
   'a Base58.encoding -> (t -> string -> 'a list Lwt.t) -> unit

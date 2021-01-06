@@ -360,11 +360,11 @@ type value = bytes
 type tree = Store.tree
 
 module Tree = struct
-  let empty = Store.Tree.empty
+  let empty _ = Store.Tree.empty
 
   let equal = Irmin.Type.(unstage (equal Store.tree_t))
 
-  let hash t = Hash.to_context_hash (Store.Tree.hash t)
+  let is_empty t = equal Store.Tree.empty t
 
   let mem = Store.Tree.mem
 

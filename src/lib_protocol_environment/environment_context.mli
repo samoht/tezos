@@ -23,42 +23,26 @@
 (*                                                                           *)
 (*****************************************************************************)
 
-module type CONTEXT = sig
-  type t
-
-  type key = string list
-
-  type value = Bytes.t
-
-  val mem : t -> key -> bool Lwt.t
-
-  val dir_mem : t -> key -> bool Lwt.t
-
-  val get : t -> key -> value option Lwt.t
-
-  val set : t -> key -> value -> t Lwt.t
-
-  val copy : t -> from:key -> to_:key -> t option Lwt.t
-
-  val remove_rec : t -> key -> t Lwt.t
-
-  type key_or_dir = [`Key of key | `Dir of key]
-
-  val fold :
-    t -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
-
-  val set_protocol : t -> Protocol_hash.t -> t Lwt.t
-
-  val fork_test_chain :
-    t -> protocol:Protocol_hash.t -> expiration:Time.Protocol.t -> t Lwt.t
-end
+module type CONTEXT = Environment_context_intf.CONTEXT
 
 module Context : sig
-  type 'ctxt ops = (module CONTEXT with type t = 'ctxt)
+  type ('ctxt, 'tree) ops =
+    (module CONTEXT with type t = 'ctxt and type tree = 'tree)
 
   type _ kind = ..
 
-  type t = Context : {kind : 'a kind; ctxt : 'a; ops : 'a ops} -> t
+  type ('a, 'b) witness
+
+  val witness : unit -> ('a, 'b) witness
+
+  type t =
+    | Context : {
+        kind : 'a kind;
+        ctxt : 'a;
+        ops : ('a, 'b) ops;
+        wit : ('a, 'b) witness;
+      }
+        -> t
 
   include CONTEXT with type t := t
 end
