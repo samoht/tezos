@@ -84,11 +84,11 @@ module type S = sig
     'a Lwt.t
 
   module Tree : sig
-    (** [empty t] is an empty tree. TODO: explain why [t] is used
-     (mainly to help with typing) *)
-    val empty : t -> tree
+    val equal : tree -> tree -> bool
 
-    val is_empty : tree -> bool
+    val hash : tree -> Context_hash.t
+
+    val empty : tree
 
     val mem : tree -> key -> bool Lwt.t
 
