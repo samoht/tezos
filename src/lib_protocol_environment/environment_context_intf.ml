@@ -24,8 +24,10 @@
 (*                                                                           *)
 (*****************************************************************************)
 
-module type S = sig
-  (** The type for context state. *)
+(* Same as [lib_storage/context_intf.ml]. *)
+
+module type VIEW = sig
+  (** The type for context views. *)
   type t
 
   (** The type for context keys. *)
@@ -33,6 +35,9 @@ module type S = sig
 
   (** The type for database values. *)
   type value = Bytes.t
+
+  (** The type for database trees. *)
+  type tree
 
   (** {2 Getters} *)
 
@@ -46,21 +51,56 @@ module type S = sig
       otherwise. *)
   val find : t -> key -> value option Lwt.t
 
+  (** [find_tree] is like {!find} but for trees. *)
+  val find_tree : t -> key -> tree option Lwt.t
+
   (** {2 Setters} *)
 
   (** [add t k v] is the database view where [k] is bound to [v] and
       is similar to [t] for other keys. *)
   val add : t -> key -> value -> t Lwt.t
 
+  (** [add_tree] is like {!add} but for trees. *)
+  val add_tree : t -> key -> tree -> t Lwt.t
+
   (** [remove c k] removes any values and trees bound to [k] in [c]. *)
   val remove : t -> key -> t Lwt.t
 
-  (** {2 Misc} *)
+  (** {2 Fold} *)
 
-  val copy : t -> from:key -> to_:key -> t option Lwt.t
+  (** [fold ?depth t root ~init ~value ~treee] Recursive fold over [t]
+      trees and values. The [value] and [tree] callbacks are called
+      with keys relative to [root]. [value] is never called with an
+      empty key, e.g. folding over the value is a no-op.
 
-  type key_or_dir = [`Key of key | `Dir of key]
-
+      If [depth] is set (by default it is not), then [value] and [tree]
+      are only called with relative keys of size [depth].  *)
   val fold :
-    t -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+    ?depth:int ->
+    t ->
+    key ->
+    init:'a ->
+    value:(key -> value -> 'a -> 'a Lwt.t) ->
+    tree:(key -> tree -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
+end
+
+module type S = sig
+  include VIEW
+
+  module Tree : sig
+    (** [empty t] is the empty tree. [t] is only needed to please the
+        typing gods. *)
+    val empty : t -> tree
+
+    (** [is_empty t] is true iff [t] is [empty _]. *)
+    val is_empty : tree -> bool
+
+    include
+      VIEW
+        with type t := tree
+         and type tree := tree
+         and type key := key
+         and type value := value
+  end
 end

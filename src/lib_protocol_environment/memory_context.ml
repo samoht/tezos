@@ -23,14 +23,16 @@
 (*                                                                           *)
 (*****************************************************************************)
 
-module M = struct
-  module StringMap = Map.Make (String)
+module StringMap = TzString.Map
 
+type t = Dir of t StringMap.t | Key of Bytes.t
+
+module M = struct
   type key = string list
 
   type value = Bytes.t
 
-  type t = Dir of t StringMap.t | Key of value
+  type nonrec t = t
 
   let pp_key =
     Format.(
@@ -40,16 +42,22 @@ module M = struct
 
   let empty = Dir StringMap.empty
 
-  let rec raw_get m k =
+  type tree = t
+
+  let rec find_tree m k =
     match (k, m) with
     | ([], m) ->
         Some m
     | (n :: k, Dir m) -> (
-      match StringMap.find n m with Some res -> raw_get res k | None -> None )
+      match StringMap.find_opt n m with
+      | Some res ->
+          find_tree res k
+      | None ->
+          None )
     | (_ :: _, Key _) ->
         None
 
-  let rec raw_set m k v =
+  let rec raw_add m k v =
     match (k, m, v) with
     | ([], (Key _ as m), Some v) ->
         if m = v then None else Some v
@@ -58,7 +66,9 @@ module M = struct
     | ([], (Key _ | Dir _), None) ->
         Some empty
     | (n :: k, Dir m, _) -> (
-      match raw_set (Option.value ~default:empty (StringMap.find n m)) k v with
+      match
+        raw_add (Option.value ~default:empty (StringMap.find_opt n m)) k v
+      with
       | None ->
           None
       | Some rm when rm = empty ->
@@ -76,82 +86,89 @@ module M = struct
           k
 
   let mem m k =
-    match raw_get m k with
+    match find_tree m k with
     | Some (Key _) ->
         Lwt.return_true
     | Some (Dir _) | None ->
         Lwt.return_false
 
   let mem_tree m k =
-    match raw_get m k with
+    match find_tree m k with
     | Some (Dir _) ->
         Lwt.return_true
     | Some (Key _) | None ->
         Lwt.return_false
 
   let find m k =
-    match raw_get m k with
+    match find_tree m k with
     | Some (Key v) ->
         Lwt.return_some v
     | Some (Dir _) | None ->
         Lwt.return_none
 
-  let add m k v =
-    match raw_set m k (Some (Key v)) with
+  let add_tree m k v =
+    match raw_add m k (Some v) with
     | None ->
         Lwt.return m
     | Some m ->
         Lwt.return m
 
+  let add m k v = add_tree m k (Key v)
+
   let remove m k =
-    match raw_set m k None with None -> Lwt.return m | Some m -> Lwt.return m
+    match raw_add m k None with None -> Lwt.return m | Some m -> Lwt.return m
 
-  let copy m ~from ~to_ =
-    match raw_get m from with
-    | None ->
-        Lwt.return_none
-    | Some v -> (
-      match raw_set m to_ (Some v) with
-      | Some _ as v ->
-          Lwt.return v
-      | None ->
-          Format.kasprintf
-            Lwt.fail_with
-            "Mem_context.copy %a %a: The value is already set."
-            pp_key
-            from
-            pp_key
-            to_
-      | exception Failure s ->
-          Format.kasprintf
-            Lwt.fail_with
-            "Mem_context.copy %a %a: Failed with %s"
-            pp_key
-            from
-            pp_key
-            to_
-            s )
-
-  type key_or_dir = [`Key of key | `Dir of key]
-
-  let fold m k ~init ~f =
-    match raw_get m k with
-    | None ->
-        Lwt.return init
-    | Some (Key _) ->
+  (* TODO(samoht): add tests *)
+  let fold ?depth m k ~init ~value ~tree =
+    match find_tree m k with
+    | None | Some (Key _) ->
         Lwt.return init
     | Some (Dir m) ->
-        StringMap.fold
-          (fun n m acc ->
-            acc
-            >>= fun acc ->
-            match m with
-            | Key _ ->
-                f (`Key (k @ [n])) acc
-            | Dir _ ->
-                f (`Dir (k @ [n])) acc)
-          m
-          (Lwt.return init)
+        let rec aux d path acc m =
+          match depth with
+          | Some depth when d > depth ->
+              acc
+          | _ ->
+              StringMap.fold
+                (fun n m acc ->
+                  let path = n :: path in
+                  let k = List.rev path in
+                  acc
+                  >>= fun acc ->
+                  match m with
+                  | Key v ->
+                      value k v acc
+                  | Dir r ->
+                      tree k m acc
+                      >>= fun acc -> aux (d + 1) path (Lwt.return acc) r)
+                m
+                acc
+        in
+        aux 0 [] (Lwt.return init) m
+
+  let find_tree m k = Lwt.return (find_tree m k)
+
+  module Tree = struct
+    let empty _ = empty
+
+    let is_empty = function Key _ -> false | Dir d -> StringMap.is_empty d
+
+    let add = add
+
+    let mem = mem
+
+    let find = find
+
+    let remove = remove
+
+    let add_tree = add_tree
+
+    let mem_tree = mem_tree
+
+    let find_tree = find_tree
+
+    let fold = fold
+  end
 
   let encoding : t Data_encoding.t =
     let open Data_encoding in
@@ -179,22 +196,22 @@ end
 
 open Tezos_protocol_environment
 
-type t = M.t
-
 type _ Context.kind += Memory : t Context.kind
 
-let ops = (module M : CONTEXT with type t = 'ctxt)
+let ops = (module M : CONTEXT with type t = 'ctxt and type tree = 'tree)
+
+let wit = Context.witness ()
 
 let empty =
   let ctxt = M.empty in
-  Context.Context {ops; ctxt; kind = Memory}
+  Context.Context {ops; ctxt; kind = Memory; wit}
 
 let project : Context.t -> t =
  fun (Context.Context {ctxt; kind; _} : Context.t) ->
   match kind with Memory -> ctxt | _ -> assert false
 
 let inject : t -> Context.t =
- fun ctxt -> Context.Context {ops; ctxt; kind = Memory}
+ fun ctxt -> Context.Context {ops; ctxt; kind = Memory; wit}
 
 let encoding : Context.t Data_encoding.t =
   let open Data_encoding in

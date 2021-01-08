@@ -30,44 +30,25 @@ let ( >>= ) = Lwt.( >>= )
 
 type _ Context.kind += Shell : Tezos_storage.Context.t Context.kind
 
-module C = struct
-  include Tezos_storage.Context
+module C = Tezos_storage.Context
 
-  type key_or_dir = [`Key of key | `Dir of key]
+let ops = (module C : CONTEXT with type t = 'ctxt and type tree = 'tree)
 
-  let copy ctxt ~from ~to_ =
-    find_tree ctxt from
-    >>= function
-    | None ->
-        Lwt.return_none
-    | Some sub_tree ->
-        add_tree ctxt to_ sub_tree >>= Lwt.return_some
-
-  let fold t k ~init ~f =
-    fold
-      ~depth:1
-      t
-      k
-      ~init
-      ~value:(fun k _ acc -> f (`Key k) acc)
-      ~tree:(fun k _ acc -> f (`Dir k) acc)
-end
-
-let ops = (module C : CONTEXT with type t = 'ctxt)
+let wit = Context.witness ()
 
 let checkout index context_hash =
   Tezos_storage.Context.checkout index context_hash
   >>= function
   | Some ctxt ->
-      Lwt.return_some (Context.Context {ops; ctxt; kind = Shell})
+      Lwt.return_some (Context.Context {ops; ctxt; kind = Shell; wit})
   | None ->
       Lwt.return_none
 
 let checkout_exn index context_hash =
   Tezos_storage.Context.checkout_exn index context_hash
-  >>= fun ctxt -> Lwt.return (Context.Context {ops; ctxt; kind = Shell})
+  >>= fun ctxt -> Lwt.return (Context.Context {ops; ctxt; kind = Shell; wit})
 
-let wrap_disk_context ctxt = Context.Context {ops; ctxt; kind = Shell}
+let wrap_disk_context ctxt = Context.Context {ops; ctxt; kind = Shell; wit}
 
 let unwrap_disk_context : t -> Tezos_storage.Context.t = function
   | Context.Context {ctxt; kind = Shell; _} ->

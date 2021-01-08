@@ -42,7 +42,7 @@ module M : sig
 
   type value = Bytes.t (* as in environment_context.mli *)
 
-  type tree = Dir of tree TzString.Map.t | Key of value
+  type tree = Memory_context.t = Dir of tree TzString.Map.t | Key of value
 
   module type ProxyDelegate = sig
     (** Whether [mem] would return Some Dir _ *)

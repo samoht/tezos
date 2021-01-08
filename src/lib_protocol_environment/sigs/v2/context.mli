@@ -28,48 +28,82 @@
 
 (* Copy/paste of Environment_context_inttf.S *)
 
-(** The type for database views. *)
-type t
+module type VIEW = sig
+  (** The type for context views. *)
+  type t
 
-(** The type for database keys. *)
-type key = string list
+  (** The type for context keys. *)
+  type key = string list
 
-(** The type for database values. *)
-type value = bytes
+  (** The type for database values. *)
+  type value = Bytes.t
 
-(** {2 Getters} *)
+  (** The type for database trees. *)
+  type tree
 
-(** [mem t k] is true iff [k] is bound to a value in [t]. *)
-val mem : t -> key -> bool Lwt.t
+  (** {2 Getters} *)
 
-(** [mem_tree t k] is like {!mem} but for trees. *)
-val mem_tree : t -> key -> bool Lwt.t
+  (** [mem t k] is true iff [k] is bound to a value in [t]. *)
+  val mem : t -> key -> bool Lwt.t
 
-(** [find t k] is [Some v] if [k] is bound to [v] in [t] and [None]
+  (** [mem_tree t k] is like {!mem} but for trees. *)
+  val mem_tree : t -> key -> bool Lwt.t
+
+  (** [find t k] is [Some v] if [k] is bound to [v] in [t] and [None]
       otherwise. *)
-val find : t -> key -> value option Lwt.t
+  val find : t -> key -> value option Lwt.t
 
-(** {2 Setters} *)
+  (** [find_tree] is like {!find} but for trees. *)
+  val find_tree : t -> key -> tree option Lwt.t
 
-(** [add t k v] is the database view where [k] is bound to [v] and
+  (** {2 Setters} *)
+
+  (** [add t k v] is the database view where [k] is bound to [v] and
       is similar to [t] for other keys. *)
-val add : t -> key -> value -> t Lwt.t
+  val add : t -> key -> value -> t Lwt.t
 
-(** [remove c k] removes any values and trees bound to [k] in [c]. *)
-val remove : t -> key -> t Lwt.t
+  (** [add_tree] is like {!add} but for trees. *)
+  val add_tree : t -> key -> tree -> t Lwt.t
 
-(** {2 Misc} *)
+  (** [remove c k] removes any values and trees bound to [k] in [c]. *)
+  val remove : t -> key -> t Lwt.t
 
-(** [copy] returns None if the [from] key is not bound *)
-val copy : t -> from:key -> to_:key -> t option Lwt.t
+  (** {2 Fold} *)
 
-type key_or_dir = [`Key of key | `Dir of key]
+  (** [fold ?depth t root ~init ~value ~treee] Recursive fold over [t]
+      trees and values. The [value] and [tree] callbacks are called
+      with keys relative to [root]. [value] is never called with an
+      empty key, e.g. folding over the value is a no-op.
 
-val fold : t -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+      If [depth] is set (by default it is not), then [value] and [tree]
+      are only called with relative keys of size [depth].  *)
+  val fold :
+    ?depth:int ->
+    t ->
+    key ->
+    init:'a ->
+    value:(key -> value -> 'a -> 'a Lwt.t) ->
+    tree:(key -> tree -> 'a -> 'a Lwt.t) ->
+    'a Lwt.t
+end
 
-val keys : t -> key -> key list Lwt.t
+include VIEW
 
-val fold_keys : t -> key -> init:'a -> f:(key -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+module Tree : sig
+  (** [empty t] is the empty tree. [t] is only needed to please the
+        typing gods. *)
+  val empty : t -> tree
+
+  (** [is_empty t] is true iff [t] is [empty _]. *)
+  val is_empty : tree -> bool
+
+  include
+    VIEW
+      with type t := tree
+       and type tree := tree
+       and type key := key
+       and type value := value
+end
 
 val register_resolver :
   'a Base58.encoding -> (t -> string -> 'a list Lwt.t) -> unit

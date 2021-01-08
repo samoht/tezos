@@ -26,12 +26,27 @@
 (** @inline *)
 module type CONTEXT = Environment_context_intf.S
 
+(** @inline *)
+module type VIEW = Environment_context_intf.VIEW
+
 module Context : sig
-  type 'ctxt ops = (module CONTEXT with type t = 'ctxt)
+  type ('ctxt, 'tree) ops =
+    (module CONTEXT with type t = 'ctxt and type tree = 'tree)
 
   type _ kind = ..
 
-  type t = Context : {kind : 'a kind; ctxt : 'a; ops : 'a ops} -> t
+  type ('a, 'b) witness
+
+  val witness : unit -> ('a, 'b) witness
+
+  type t =
+    | Context : {
+        kind : 'a kind;
+        ctxt : 'a;
+        ops : ('a, 'b) ops;
+        wit : ('a, 'b) witness;
+      }
+        -> t
 
   include CONTEXT with type t := t
 
