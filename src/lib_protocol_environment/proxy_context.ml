@@ -186,7 +186,7 @@ module M = struct
           | Ok x ->
               Lwt.return x ) )
 
-  let dir_mem m k =
+  let mem_tree m k =
     match local_get m.tree k with
     | Some (Key _) ->
         Lwt.return_false
@@ -206,7 +206,7 @@ module M = struct
           | Ok x ->
               Lwt.return x ) )
 
-  let get m k =
+  let find m k =
     raw_get m k
     >>= function
     | Some (Dir _) | None ->
@@ -214,14 +214,14 @@ module M = struct
     | Some (Key v) ->
         Lwt.return_some v
 
-  let set m k v =
+  let add m k v =
     match raw_set m k (Some (Key v)) with
     | None ->
         Lwt.return m
     | Some m ->
         Lwt.return m
 
-  let remove_rec m k =
+  let remove m k =
     match raw_set m k None with None -> Lwt.return m | Some m -> Lwt.return m
 
   let copy m ~from ~to_ =

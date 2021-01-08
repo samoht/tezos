@@ -82,28 +82,28 @@ module M = struct
     | Some (Dir _) | None ->
         Lwt.return_false
 
-  let dir_mem m k =
+  let mem_tree m k =
     match raw_get m k with
     | Some (Dir _) ->
         Lwt.return_true
     | Some (Key _) | None ->
         Lwt.return_false
 
-  let get m k =
+  let find m k =
     match raw_get m k with
     | Some (Key v) ->
         Lwt.return_some v
     | Some (Dir _) | None ->
         Lwt.return_none
 
-  let set m k v =
+  let add m k v =
     match raw_set m k (Some (Key v)) with
     | None ->
         Lwt.return m
     | Some m ->
         Lwt.return m
 
-  let remove_rec m k =
+  let remove m k =
     match raw_set m k None with None -> Lwt.return m | Some m -> Lwt.return m
 
   let copy m ~from ~to_ =

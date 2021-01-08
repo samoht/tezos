@@ -43,14 +43,6 @@ module C = struct
     | Some sub_tree ->
         add_tree ctxt to_ sub_tree >>= Lwt.return_some
 
-  let set = add
-
-  let get = find
-
-  let dir_mem = mem_tree
-
-  let remove_rec = remove
-
   let fold t k ~init ~f =
     fold
       ~depth:1
