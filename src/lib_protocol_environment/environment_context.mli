@@ -23,8 +23,9 @@
 (*                                                                           *)
 (*****************************************************************************)
 
-(** @inline *)
-module type CONTEXT = Environment_context_intf.S
+module type CONTEXT = sig
+  include Environment_context_intf.S (** @inline *)
+end
 
 (** @inline *)
 module type VIEW = Environment_context_intf.VIEW

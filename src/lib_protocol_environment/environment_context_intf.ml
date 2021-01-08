@@ -31,10 +31,10 @@ module type VIEW = sig
   type t
 
   (** The type for context keys. *)
-  type key = string list
+  type key := string list
 
   (** The type for database values. *)
-  type value = Bytes.t
+  type value := Bytes.t
 
   (** The type for database trees. *)
   type tree
@@ -68,7 +68,7 @@ module type VIEW = sig
 
   (** {2 Fold} *)
 
-  (** [fold ?depth t root ~init ~value ~treee] Recursive fold over [t]
+  (** [fold ?depth t root ~init ~value ~tree] Recursive fold over [t]
       trees and values. The [value] and [tree] callbacks are called
       with keys relative to [root]. [value] is never called with an
       empty key, e.g. folding over the value is a no-op.
