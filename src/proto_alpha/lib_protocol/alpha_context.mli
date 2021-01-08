@@ -1510,10 +1510,11 @@ module Commitment : sig
     amount : Tez.tez;
   }
 
-  val get_opt :
+  val find :
     context -> Blinded_public_key_hash.t -> Tez.t option tzresult Lwt.t
 
-  val delete : context -> Blinded_public_key_hash.t -> context tzresult Lwt.t
+  val remove_existing :
+    context -> Blinded_public_key_hash.t -> context tzresult Lwt.t
 end
 
 module Bootstrap : sig
