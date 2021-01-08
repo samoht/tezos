@@ -33,8 +33,6 @@ type _ Context.kind += Shell : Tezos_storage.Context.t Context.kind
 module C = struct
   include Tezos_storage.Context
 
-  let set_protocol = add_protocol
-
   type key_or_dir = [`Key of key | `Dir of key]
 
   let copy ctxt ~from ~to_ =

@@ -46,9 +46,4 @@ module type S = sig
 
   val fold :
     t -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
-
-  val set_protocol : t -> Protocol_hash.t -> t Lwt.t
-
-  val fork_test_chain :
-    t -> protocol:Protocol_hash.t -> expiration:Time.Protocol.t -> t Lwt.t
 end

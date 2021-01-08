@@ -63,18 +63,17 @@ module Context = struct
 
   type key_or_dir = [`Key of key | `Dir of key]
 
+  let current_protocol_key = ["protocol"]
+
   let fold (Context {ops = (module Ops); ctxt; _}) key ~init ~f =
     Ops.fold ctxt key ~init ~f
 
-  let set_protocol (Context {ops = (module Ops) as ops; ctxt; kind})
-      protocol_hash =
-    Ops.set_protocol ctxt protocol_hash
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
+  let set_protocol (Context ({ops = (module Ops); ctxt; _} as c)) protocol_hash
+      =
+    Ops.set ctxt current_protocol_key (Protocol_hash.to_bytes protocol_hash)
+    >>= fun ctxt -> Lwt.return (Context {c with ctxt})
 
-  let fork_test_chain (Context {ops = (module Ops) as ops; ctxt; kind})
-      ~protocol ~expiration =
-    Ops.fork_test_chain ctxt ~protocol ~expiration
-    >>= fun ctxt -> Lwt.return (Context {ops; ctxt; kind})
+  let fork_test_chain c ~protocol:_ ~expiration:_ = Lwt.return c
 end
 
 type validation_result = {

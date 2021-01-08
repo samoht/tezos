@@ -278,14 +278,6 @@ module M = struct
                 f (`Dir (k @ [n])) acc)
           m
           (Lwt.return init)
-
-  let current_protocol_key = ["protocol"]
-
-  let set_protocol v key =
-    raw_set v current_protocol_key (Some (Key (Protocol_hash.to_bytes key)))
-    |> function Some m -> Lwt.return m | None -> assert false
-
-  let fork_test_chain c ~protocol:_ ~expiration:_ = Lwt.return c
 end
 
 open Tezos_protocol_environment

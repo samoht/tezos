@@ -34,6 +34,11 @@ module Context : sig
   type t = Context : {kind : 'a kind; ctxt : 'a; ops : 'a ops} -> t
 
   include CONTEXT with type t := t
+
+  val set_protocol : t -> Protocol_hash.t -> t Lwt.t
+
+  val fork_test_chain :
+    t -> protocol:Protocol_hash.t -> expiration:Time.Protocol.t -> t Lwt.t
 end
 
 type validation_result = {
