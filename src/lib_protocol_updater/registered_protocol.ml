@@ -95,7 +95,7 @@ let build hash =
       let module Name = struct
         let name = Protocol_hash.to_b58check hash
       end in
-      let module Env = Tezos_protocol_environment.MakeV1 (Name) () in
+      let module Env = Tezos_protocol_environment.MakeV2 (Name) () in
       Some
         ( module struct
           module Raw = F (Env)
