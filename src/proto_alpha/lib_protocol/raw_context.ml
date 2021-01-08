@@ -802,11 +802,14 @@ type key = string list
 
 type value = bytes
 
+type tree = Context.tree
+
 module type T =
   Raw_context_intf.T
     with type root := root
      and type key := key
      and type value := value
+     and type tree := tree
 
 let mem ctxt k = Context.mem (context ctxt) k
 
@@ -816,9 +819,18 @@ let get ctxt k =
   Context.find (context ctxt) k
   >|= function None -> storage_error (Missing_key (k, Get)) | Some v -> ok v
 
+let get_tree ctxt k =
+  Context.find_tree (context ctxt) k
+  >|= function None -> storage_error (Missing_key (k, Get)) | Some v -> ok v
+
 let find ctxt k = Context.find (context ctxt) k
 
+let find_tree ctxt k = Context.find_tree (context ctxt) k
+
 let add ctxt k v = Context.add (context ctxt) k v >|= update_context ctxt
+
+let add_tree ctxt k v =
+  Context.add_tree (context ctxt) k v >|= update_context ctxt
 
 let init ctxt k v =
   Context.mem (context ctxt) k
@@ -827,6 +839,15 @@ let init ctxt k v =
       Lwt.return @@ storage_error (Existing_key k)
   | _ ->
       Context.add (context ctxt) k v
+      >|= fun context -> ok (update_context ctxt context)
+
+let init_tree ctxt k v : _ tzresult Lwt.t =
+  Context.mem_tree (context ctxt) k
+  >>= function
+  | true ->
+      Lwt.return @@ storage_error (Existing_key k)
+  | _ ->
+      Context.add_tree (context ctxt) k v
       >|= fun context -> ok (update_context ctxt context)
 
 let update ctxt k v =
@@ -838,9 +859,28 @@ let update ctxt k v =
       Context.add (context ctxt) k v
       >|= fun context -> ok (update_context ctxt context)
 
+let update_tree ctxt k v =
+  Context.mem_tree (context ctxt) k
+  >>= function
+  | false ->
+      Lwt.return @@ storage_error (Missing_key (k, Set))
+  | _ ->
+      Context.add_tree (context ctxt) k v
+      >|= fun context -> ok (update_context ctxt context)
+
 (* Verify that the key is present before deleting *)
 let remove_existing ctxt k =
   Context.mem (context ctxt) k
+  >>= function
+  | false ->
+      Lwt.return @@ storage_error (Missing_key (k, Del))
+  | _ ->
+      Context.remove (context ctxt) k
+      >|= fun context -> ok (update_context ctxt context)
+
+(* Verify that the key is present before deleting *)
+let remove_existing_tree ctxt k =
+  Context.mem_tree (context ctxt) k
   >>= function
   | false ->
       Lwt.return @@ storage_error (Missing_key (k, Del))
@@ -857,34 +897,88 @@ let add_or_remove ctxt k = function
   | Some v ->
       add ctxt k v
 
-let copy ctxt ~from ~to_ =
-  Context.find_tree (context ctxt) from
-  >>= function
+let add_or_remove_tree ctxt k = function
   | None ->
-      Lwt.return @@ storage_error (Missing_key (from, Copy))
-  | Some sub_tree ->
-      Context.add_tree (context ctxt) to_ sub_tree
-      >|= fun context -> ok (update_context ctxt context)
+      remove ctxt k
+  | Some v ->
+      add_tree ctxt k v
 
-let fold ctxt root ~init ~f =
-  Context.fold
-    ~depth:1
-    (context ctxt)
-    root
-    ~init
-    ~value:(fun k _ acc -> f (`Key (root @ k)) acc)
-    ~tree:(fun k _ acc -> f (`Dir (root @ k)) acc)
+let fold ?depth ctxt k ~init ~value ~tree =
+  Context.fold ?depth (context ctxt) k ~init ~value ~tree
 
-let fold_keys ctxt root ~init ~f =
-  Context.fold
-    (context ctxt)
-    root
-    ~init
-    ~value:(fun k _ acc -> f (root @ k) acc)
-    ~tree:(fun _ _ acc -> Lwt.return acc)
+module Tree = struct
+  include Context.Tree
 
-let keys ctxt k =
-  fold_keys ctxt k ~init:[] ~f:(fun k acc -> Lwt.return (k :: acc))
+  let empty ctxt = Context.Tree.empty (context ctxt)
+
+  let get t k =
+    find t k
+    >|= function
+    | None -> storage_error (Missing_key (k, Get)) | Some v -> ok v
+
+  let get_tree t k =
+    find_tree t k
+    >|= function
+    | None -> storage_error (Missing_key (k, Get)) | Some v -> ok v
+
+  let init t k v =
+    mem t k
+    >>= function
+    | true ->
+        Lwt.return @@ storage_error (Existing_key k)
+    | _ ->
+        add t k v >|= ok
+
+  let init_tree t k v =
+    mem_tree t k
+    >>= function
+    | true ->
+        Lwt.return @@ storage_error (Existing_key k)
+    | _ ->
+        add_tree t k v >|= ok
+
+  let update t k v =
+    mem t k
+    >>= function
+    | false ->
+        Lwt.return @@ storage_error (Missing_key (k, Set))
+    | _ ->
+        add t k v >|= ok
+
+  let update_tree t k v =
+    mem_tree t k
+    >>= function
+    | false ->
+        Lwt.return @@ storage_error (Missing_key (k, Set))
+    | _ ->
+        add_tree t k v >|= ok
+
+  (* Verify that the key is present before deleting *)
+  let remove_existing t k =
+    mem t k
+    >>= function
+    | false ->
+        Lwt.return @@ storage_error (Missing_key (k, Del))
+    | _ ->
+        remove t k >|= ok
+
+  (* Verify that the key is present before deleting *)
+  let remove_existing_tree t k =
+    mem_tree t k
+    >>= function
+    | false ->
+        Lwt.return @@ storage_error (Missing_key (k, Del))
+    | _ ->
+        remove t k >|= ok
+
+  let add_or_remove t k = function None -> remove t k | Some v -> add t k v
+
+  let add_or_remove_tree t k = function
+    | None ->
+        remove t k
+    | Some v ->
+        add_tree t k v
+end
 
 let project x = x
 
