@@ -315,6 +315,82 @@ let test_fold {idx; genesis; _} =
       fold (Some 1) [] [["foo"]]
       >>= fun () -> fold (Some 2) [["foo"; "toto"]] [["foo"; "bar"]]
 
+let test_trees {idx; genesis; _} =
+  checkout idx genesis
+  >>= function
+  | None ->
+      Assert.fail_msg "checkout genesis_block"
+  | Some ctxt ->
+      Tree.fold
+        ~depth:1
+        ~init:()
+        (Tree.empty ctxt)
+        []
+        ~value:(fun k _ () ->
+          assert (List.length k = 1) ;
+          Assert.fail_msg "contents")
+        ~tree:(fun k _ () ->
+          assert (List.length k = 1) ;
+          Assert.fail_msg "node")
+      >>= fun () ->
+      let foo1 = Bytes.of_string "foo1" in
+      let foo2 = Bytes.of_string "foo2" in
+      Tree.empty ctxt
+      |> fun v1 ->
+      Tree.add v1 ["foo"; "toto"] foo1
+      >>= fun v1 ->
+      Tree.add v1 ["foo"; "bar"; "toto"] foo2
+      >>= fun v1 ->
+      let fold depth ecs ens =
+        Tree.fold
+          v1
+          ?depth
+          []
+          ~value:(fun path _ (cs, ns) -> Lwt.return (path :: cs, ns))
+          ~tree:(fun path _ (cs, ns) -> Lwt.return (cs, path :: ns))
+          ~init:([], [])
+        >>= fun (cs, ns) ->
+        Assert.equal_string_list_list ~msg:__LOC__ ecs cs ;
+        Assert.equal_string_list_list ~msg:__LOC__ ens ns ;
+        Lwt.return ()
+      in
+      fold
+        None
+        [["foo"; "toto"]; ["foo"; "bar"; "toto"]]
+        [["foo"; "bar"]; ["foo"]; []]
+      >>= fun () ->
+      fold (Some 0) [] [[]]
+      >>= fun () ->
+      fold (Some 1) [] [["foo"]]
+      >>= fun () ->
+      fold (Some 2) [["foo"; "toto"]] [["foo"; "bar"]]
+      >>= fun () ->
+      Tree.remove v1 ["foo"; "bar"; "toto"]
+      >>= fun v1 ->
+      Tree.find v1 ["foo"; "bar"; "toto"]
+      >>= fun v ->
+      Assert.equal_bytes_option ~msg:__LOC__ None v ;
+      Tree.find v1 ["foo"; "toto"]
+      >>= fun v ->
+      Assert.equal_bytes_option ~msg:__LOC__ (Some foo1) v ;
+      Tree.empty ctxt
+      |> fun v1 ->
+      Tree.add v1 ["foo"; "1"] foo1
+      >>= fun v1 ->
+      Tree.add v1 ["foo"; "2"] foo2
+      >>= fun v1 ->
+      Tree.remove v1 ["foo"; "1"]
+      >>= fun v1 ->
+      Tree.remove v1 ["foo"; "2"]
+      >>= fun v1 ->
+      Tree.find v1 ["foo"; "1"]
+      >>= fun v ->
+      Assert.equal_bytes_option ~msg:__LOC__ None v ;
+      Tree.remove v1 []
+      >>= fun v1 ->
+      Assert.equal_bool ~msg:__LOC__ true (Tree.is_empty v1) ;
+      Lwt.return ()
+
 let test_dump {idx; block3b; _} =
   Lwt_utils_unix.with_tempdir "tezos_test_" (fun base_dir2 ->
       let dumpfile = base_dir2 // "dump" in
@@ -391,6 +467,7 @@ let tests : (string * (t -> unit Lwt.t)) list =
     ("replay", test_replay);
     ("fold_keys", test_fold_keys);
     ("fold", test_fold);
+    ("trees", test_trees);
     ("dump", test_dump) ]
 
 let tests =
