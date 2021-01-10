@@ -241,7 +241,7 @@ let fold_keys s root ~init ~f =
 
 let keys t = fold_keys t ~init:[] ~f:(fun k acc -> Lwt.return (k :: acc))
 
-let test_fold {idx; genesis; _} =
+let test_fold_keys {idx; genesis; _} =
   checkout idx genesis
   >>= function
   | None ->
@@ -279,6 +279,41 @@ let test_fold {idx; genesis; _} =
       >>= fun l ->
       Assert.equal_string_list_list ~msg:__LOC__ [] l ;
       Lwt.return_unit
+
+let test_fold {idx; genesis; _} =
+  checkout idx genesis
+  >>= function
+  | None ->
+      Assert.fail_msg "checkout genesis_block"
+  | Some ctxt ->
+      let foo1 = Bytes.of_string "foo1" in
+      let foo2 = Bytes.of_string "foo2" in
+      add ctxt ["foo"; "toto"] foo1
+      >>= fun ctxt ->
+      add ctxt ["foo"; "bar"; "toto"] foo2
+      >>= fun ctxt ->
+      let fold depth ecs ens =
+        fold
+          ?depth
+          ctxt
+          []
+          ~value:(fun path _ (cs, ns) -> Lwt.return (path :: cs, ns))
+          ~tree:(fun path _ (cs, ns) -> Lwt.return (cs, path :: ns))
+          ~init:([], [])
+        >>= fun (cs, ns) ->
+        Assert.equal_string_list_list ~msg:__LOC__ ecs cs ;
+        Assert.equal_string_list_list ~msg:__LOC__ ens ns ;
+        Lwt.return ()
+      in
+      fold
+        None
+        [["foo"; "toto"]; ["foo"; "bar"; "toto"]]
+        [["foo"; "bar"]; ["foo"]; []]
+      >>= fun () ->
+      fold (Some 0) [] [[]]
+      >>= fun () ->
+      fold (Some 1) [] [["foo"]]
+      >>= fun () -> fold (Some 2) [["foo"; "toto"]] [["foo"; "bar"]]
 
 let test_dump {idx; block3b; _} =
   Lwt_utils_unix.with_tempdir "tezos_test_" (fun base_dir2 ->
@@ -354,6 +389,7 @@ let tests : (string * (t -> unit Lwt.t)) list =
     ("continuation", test_continuation);
     ("fork", test_fork);
     ("replay", test_replay);
+    ("fold_keys", test_fold_keys);
     ("fold", test_fold);
     ("dump", test_dump) ]
 
