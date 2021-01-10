@@ -123,7 +123,13 @@ module M = struct
     match find_tree m k with
     | None | Some (Key _) ->
         Lwt.return init
-    | Some (Dir m) ->
+    | Some (Dir m as tr) ->
+        ( match depth with
+        | None ->
+            tree [] tr init
+        | Some depth ->
+            if depth = 0 then tree [] tr init else Lwt.return init )
+        >>= fun init ->
         let rec aux d path acc m =
           match depth with
           | Some depth when d > depth ->
@@ -133,18 +139,21 @@ module M = struct
                 (fun n m acc ->
                   let path = n :: path in
                   let k = List.rev path in
+                  let act =
+                    match depth with None -> true | Some depth -> d = depth
+                  in
                   acc
                   >>= fun acc ->
                   match m with
                   | Key v ->
-                      value k v acc
+                      if act then value k v acc else Lwt.return acc
                   | Dir r ->
-                      tree k m acc
+                      (if act then tree k m acc else Lwt.return acc)
                       >>= fun acc -> aux (d + 1) path (Lwt.return acc) r)
                 m
                 acc
         in
-        aux 0 [] (Lwt.return init) m
+        aux 1 [] (Lwt.return init) m
 
   let find_tree m k = Lwt.return (find_tree m k)
 
