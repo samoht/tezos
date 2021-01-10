@@ -198,7 +198,17 @@ module C = struct
     >>= function
     | None | Some (Key _) ->
         Lwt.return init
-    | Some (Dir m) ->
+    | Some (Dir m as tr) ->
+        ( match depth with
+        | None ->
+            let tr = {proxy = tree_proxy []; tree = tr} in
+            tree [] tr init
+        | Some depth ->
+            if depth = 0 then
+              let tr = {proxy = tree_proxy []; tree = tr} in
+              tree [] tr init
+            else Lwt.return init )
+        >>= fun init ->
         let rec aux d path acc m =
           match depth with
           | Some depth when d > depth ->
@@ -208,19 +218,22 @@ module C = struct
                 (fun n m acc ->
                   let path = n :: path in
                   let k = List.rev path in
+                  let act =
+                    match depth with None -> true | Some depth -> d = depth
+                  in
                   acc
                   >>= fun acc ->
                   match m with
                   | M.Key v ->
-                      value k v acc
+                      if act then value k v acc else Lwt.return acc
                   | Dir r ->
-                      let proxy = tree_proxy k in
-                      tree k {proxy; tree = m} acc
+                      let m = {proxy = tree_proxy k; tree = m} in
+                      (if act then tree k m acc else Lwt.return acc)
                       >>= fun acc -> aux (d + 1) path (Lwt.return acc) r)
                 m
                 acc
         in
-        aux 0 k (Lwt.return init) m
+        aux 1 k (Lwt.return init) m
 
   let fold ?depth {M.proxy; tree} =
     raw_fold ?depth ~proxy:(root_proxy proxy) tree
