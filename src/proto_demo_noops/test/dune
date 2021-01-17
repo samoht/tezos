@@ -1,0 +1,17 @@
+(rule
+  (alias runtest_rejections)
+  (deps
+    (:compiler %{bin:tezos-protocol-compiler})
+    (source_tree ../lib_protocol))
+  (action
+    (run
+      bash
+       ./rejections.sh
+        %{compiler}
+        ../lib_protocol/TEZOS_PROTOCOL)))
+
+(rule
+ (alias runtest_out_of_opam)
+ (deps
+   (alias runtest_rejections))
+ (action (progn)))
