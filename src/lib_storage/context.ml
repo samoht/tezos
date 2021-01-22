@@ -192,7 +192,10 @@ module Node = struct
 
     let pre_hash_entries = Irmin.Type.(unstage (pre_hash entries_t))
 
-    let pre_hash entries = pre_hash_entries entries
+    let compare_entry x y = String.compare x.name y.name
+
+    let pre_hash entries =
+      pre_hash_entries (List.fast_sort compare_entry entries)
   end
 
   include M
@@ -403,9 +406,12 @@ let copy ctxt ~from ~to_ =
 
 type key_or_dir = [`Key of key | `Dir of key]
 
+let compare_key (x, _) (y, _) = String.compare x y
+
 let fold ctxt key ~init ~f =
   Store.Tree.list ctxt.tree (data_key key)
   >>= fun keys ->
+  let keys = List.fast_sort compare_key keys in
   List.fold_left_s
     (fun acc (name, t) ->
       let key =
