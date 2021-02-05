@@ -99,10 +99,6 @@ module C = struct
         ("trace", Error_monad.trace_encoding)
   end
 
-  type elt = Key of value | Dir of Local.tree
-
-  let elt t = match Local.Tree.kind t with `Value v -> Key v | `Tree -> Dir t
-
   let raw_find (t : tree) k =
     Local.Tree.find_tree t.tree k
     >>= function
@@ -127,7 +123,7 @@ module C = struct
     Local.Tree.find_tree t.tree k
     >|= Option.map Local.Tree.kind
     >>= function
-    | Some (`Value _) ->
+    | Some `Value ->
         Lwt.return (kind = `Value)
     | Some `Tree ->
         Lwt.return (kind = `Tree)
@@ -174,8 +170,8 @@ module C = struct
   let find t k =
     data_tree t
     >>= fun tree ->
-    raw_find tree k >|= Option.map elt
-    >|= function Some (Key v) -> Some v | _ -> None
+    raw_find tree k
+    >>= function None -> Lwt.return_none | Some v -> Local.Tree.to_value v
 
   let find_tree t k =
     data_tree t
@@ -249,11 +245,8 @@ module C = struct
 
     let find t k =
       raw_find t k
-      >|= function
-      | None ->
-          None
-      | Some tree -> (
-        match Local.Tree.kind tree with `Value v -> Some v | `Tree -> None )
+      >>= function
+      | None -> Lwt.return_none | Some tree -> Local.Tree.to_value tree
 
     let find_tree t k =
       raw_find t k
@@ -274,6 +267,8 @@ module C = struct
           f k tree acc)
 
     let kind t = Local.Tree.kind t.tree
+
+    let to_value t = Local.Tree.to_value t.tree
 
     let list = raw_list
 
